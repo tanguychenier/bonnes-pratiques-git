@@ -10,21 +10,30 @@
 * [Configuration initiale](#configuration-initiale)
 * [Messages de commit](#messages-de-commit)
 * [Branches et stratégie de branchement](#branches-et-stratégie-de-branchement)
+* [Trunk-Based Development : le standard moderne](#trunk-based-development--le-standard-moderne)
+* [GitFlow : utile, mais souvent surdimensionné](#gitflow--utile-mais-souvent-surdimensionné)
+* [Forks vs branches partagées](#forks-vs-branches-partagées)
+* [Monorepo vs polyrepo](#monorepo-vs-polyrepo)
 * [Gestion des conflits](#gestion-des-conflits)
-* [Rebase ou merge ?](#rebase-ou-merge-)
+* [Rebase, merge ou squash : trois stratégies de fusion](#rebase-merge-ou-squash--trois-stratégies-de-fusion)
+* [Stacked PRs : la revue par couches](#stacked-prs--la-revue-par-couches)
 * [Tags et versionnage](#tags-et-versionnage)
 * [Commits et tags signés](#commits-et-tags-signés)
 * [Squash](#squash)
 * [Réécrire l'historique en sécurité](#réécrire-lhistorique-en-sécurité)
 * [Cherry-pick, revert, reset : choisir le bon outil](#cherry-pick-revert-reset--choisir-le-bon-outil)
 * [Stash : mettre de côté du travail en cours](#stash--mettre-de-côté-du-travail-en-cours)
+* [Worktree : plusieurs checkouts en parallèle](#worktree--plusieurs-checkouts-en-parallèle)
 * [Bisect : retrouver le commit fautif](#bisect--retrouver-le-commit-fautif)
 * [Reflog : la machine à remonter le temps](#reflog--la-machine-à-remonter-le-temps)
+* [Internes Git : objets, refs, packfiles](#internes-git--objets-refs-packfiles)
+* [Gros dépôts : LFS, sparse checkout, partial clone](#gros-dépôts--lfs-sparse-checkout-partial-clone)
 * [Fichiers sensibles](#fichiers-sensibles)
 * [Le fichier .gitignore](#le-fichier-gitignore)
-* [Le fichier .gitattributes](#le-fichier-gitattributes)
+* [Le fichier .gitattributes et la normalisation CRLF](#le-fichier-gitattributes-et-la-normalisation-crlf)
 * [Hooks Git](#hooks-git)
 * [Pull Requests : la revue comme garde-fou](#pull-requests--la-revue-comme-garde-fou)
+* [Protection de branche côté GitHub](#protection-de-branche-côté-github)
 * [Pièges classiques et comment s'en sortir](#pièges-classiques-et-comment-sen-sortir)
 * [Antisèche des commandes](#antisèche-des-commandes)
 * [Pour aller plus loin](#pour-aller-plus-loin)
@@ -232,6 +241,59 @@ expiration, ce qui retenait l'objet User en mémoire.
 - [`commitizen`](https://commitizen-tools.github.io/commitizen/) propose un assistant interactif (`cz commit`) qui guide la rédaction.
 - [`semantic-release`](https://semantic-release.gitbook.io/) lit les Conventional Commits pour calculer la prochaine version SemVer et publier automatiquement le changelog.
 
+### Limites et critiques de Conventional Commits
+
+Conventional Commits est une norme utile, mais ce n'est pas une recette miracle. Plusieurs critiques récurrentes méritent d'être connues avant de l'imposer à toute une équipe.
+
+#### Le type ne tombe pas toujours juste
+
+Que faire d'un commit qui :
+
+- Améliore la lisibilité d'une fonction *et* corrige un edge-case mineur ? `refactor` ou `fix` ?
+- Ajoute un test *et* corrige le bug que ce test révèle ? `test` ou `fix` ?
+- Met à jour une dépendance pour fermer une CVE ? `chore`, `fix`, `build`, `security` ?
+- Renomme un dossier interne sans changer le comportement ? `refactor`, `chore`, `style` ?
+
+La spécification ne tranche pas ; chaque équipe arbitre, et les arbitrages divergent. Sans guide d'équipe, le type devient une loterie.
+
+#### `chore:` se transforme en poubelle
+
+`chore` est censé désigner les tâches d'outillage. En pratique, il devient le fourre-tout par défaut quand on hésite. Sur certains dépôts, 40 % des commits sont en `chore:`, ce qui ruine la valeur informative du préfixe et brouille les changelogs générés.
+
+Antidotes :
+
+- Documenter clairement le périmètre de chaque type dans un `CONTRIBUTING.md`.
+- Ajouter des types personnalisés si pertinent : `security:`, `deps:`, `infra:`, `i18n:`.
+- Réviser la liste de types tous les six mois en rétrospective.
+
+#### Les scopes deviennent un mini-référentiel à maintenir
+
+`feat(panier):`, `feat(checkout):`, `feat(billing):` : sur un projet de cinquante modules, la liste des scopes devient elle-même un objet à gérer. Quand un module est renommé, les anciens commits gardent l'ancien scope, et les recherches `git log --grep "(panier)"` retournent une vue partielle. Sur un monorepo, on peut être tenté d'utiliser le chemin (`feat(libs/ui):`), ce qui devient verbeux.
+
+#### L'over-formalisation peut ralentir les revues
+
+Sur des projets très formels, un commit rejeté par `commitlint` parce qu'il dépasse 72 caractères ou que le scope n'est pas dans la liste autorisée déclenche une friction : le développeur réécrit le message, push à nouveau, le revieweur revoit. Pour des contributions rares (open source, contributeurs occasionnels), c'est dissuasif.
+
+#### `BREAKING CHANGE` sous-utilisé
+
+Beaucoup d'équipes oublient le `!` ou le footer `BREAKING CHANGE:`, ce qui fait que `semantic-release` produit une version mineure pour un changement majeur. Le rituel de revue doit explicitement vérifier ce point sur les PR à risque.
+
+#### Quand l'utiliser, quand l'éviter
+
+| Contexte | Recommandation |
+|----------|----------------|
+| Bibliothèque publique avec releases automatiques (npm, PyPI) | **Oui**, indispensable. SemVer + changelog en dépend. |
+| Application interne avec changelog manuel | **Oui**, mais sans `commitlint` strict — guide d'équipe suffit. |
+| Hackathon, prototype, expérimentation courte | **Non**, friction inutile. |
+| Dépôt avec contributeurs externes occasionnels | **Oui**, mais avec assistant (commitizen) et indulgence côté mainteneurs. |
+| Mono-développeur sur projet personnel | À volonté. Bénéfice marginal sauf publication automatisée. |
+
+#### Alternatives partielles
+
+- **Gitmoji** : remplace le type par un emoji. Visuellement parlant mais peu adapté à un environnement professionnel formel.
+- **Angular convention** (variante historique de Conventional Commits) : très proche, plus restrictive.
+- **Pas de norme** : laissez les développeurs écrire des messages clairs en prose. Marche très bien pour des équipes mûres ; échoue dès que les nouveaux arrivent.
+
 [Retour en haut de page](#table-des-matières)
 
 ## Branches et stratégie de branchement
@@ -252,7 +314,19 @@ Une branche isole un travail en cours du tronc stable. Trois grandes familles de
 | Coût mental | Faible si CI fiable | Très faible | Élevé (cinq types de branches à orchestrer) |
 | Réputation actuelle | Recommandé par la majorité des praticiens DevOps modernes | Standard de fait sur GitHub / GitLab | Souvent surdimensionné ; à réserver aux contextes qui en ont vraiment besoin |
 
-Pour un projet neuf, le choix par défaut raisonnable est **GitHub Flow**, avec une dérive progressive vers **Trunk-Based** à mesure que la couverture de tests et la CI mûrissent.
+Pour un projet neuf, le choix par défaut raisonnable est **GitHub Flow**, avec une dérive progressive vers **Trunk-Based** à mesure que la couverture de tests et la CI mûrissent. **Git Flow** ne se justifie que si l'on maintient simultanément plusieurs versions livrées chez des clients différents (logiciel embarqué, ERP installé, SDK avec longue compatibilité descendante). Sur un SaaS déployé en continu, GitFlow est presque toujours un fardeau de cérémonie qui ralentit les itérations.
+
+### Critère de décision rapide
+
+| Question | Réponse oui → stratégie suggérée |
+|----------|----------------------------------|
+| « Déployez-vous plusieurs fois par jour ? » | Trunk-Based |
+| « Avez-vous une couverture de tests automatisés > 70 % ? » | Trunk-Based ou GitHub Flow |
+| « Un nouveau venu peut-il déployer en production le premier jour ? » | Trunk-Based avec feature flags |
+| « Maintenez-vous v3.x, v4.x et v5.x en production simultanément chez différents clients ? » | Git Flow avec branches `release/*` |
+| « Travaillez-vous principalement en open source via PR de contributeurs externes ? » | GitHub Flow (forks + PR) |
+| « Les développeurs et les ops sont-ils dans la même équipe ? » | Trunk-Based ou GitHub Flow |
+| « Avez-vous besoin de geler une version pendant qu'une autre continue ? » | Git Flow ou Trunk-Based + branches de release ponctuelles |
 
 ### Conventions de nommage
 
@@ -290,6 +364,261 @@ sequenceDiagram
 - Supprimer la branche distante après merge (case « Delete branch » sur GitHub, automatisable).
 - Nettoyer les branches locales obsolètes : `git fetch --prune`, puis `git branch -vv` pour repérer celles dont l'amont a disparu.
 - Protéger `main` côté plateforme : interdiction de force-push, exigence de revue, exigence de CI verte, signatures requises pour les commits si l'équipe les utilise.
+
+[Retour en haut de page](#table-des-matières)
+
+## Trunk-Based Development : le standard moderne
+
+> **Définition — Trunk-Based Development (TBD).** Stratégie de branchement où tous les développeurs intègrent leurs commits sur une branche unique (`main`, dite « le tronc »), au moins une fois par jour, en s'appuyant massivement sur l'intégration continue, les tests automatisés et les *feature flags* pour découpler la livraison du déploiement.
+
+TBD est aujourd'hui le modèle dominant dans les organisations qui pratiquent le déploiement continu : Google (depuis l'origine, sur un monorepo de plusieurs milliards de lignes), Meta / Facebook, Netflix, Spotify, Stripe, Shopify. Ce n'est pas un effet de mode : le rapport [State of DevOps](https://cloud.google.com/devops/state-of-devops) (Google / DORA) corrèle systématiquement TBD à des indicateurs de performance plus élevés (fréquence de déploiement, lead time, taux d'échec, MTTR).
+
+### Principes de base
+
+| Principe | Pratique concrète |
+|----------|-------------------|
+| **Une seule branche d'intégration** | `main`, toujours déployable. Pas de `develop`, pas de `release/*` permanente. |
+| **Branches de très courte durée** | Idéalement quelques heures, au pire un ou deux jours. Si une branche dure une semaine, c'est qu'elle est trop grosse. |
+| **Intégration au moins quotidienne** | Chaque développeur merge ou rebase sur `main` au minimum une fois par jour. |
+| **Feature flags pour le travail incomplet** | Le code d'une fonctionnalité non terminée est merge en `main` mais désactivé via un flag, pas isolé sur une branche longue. |
+| **CI rapide et fiable** | < 10 minutes pour la suite principale. Au-delà, les développeurs cessent de la respecter. |
+| **Build vert = priorité absolue** | Casser `main` est l'équivalent d'une alarme incendie. Tout le monde s'arrête pour rétablir le tronc. |
+
+### Feature flags : le pivot de TBD
+
+Sans feature flags, TBD est impossible : on ne peut pas merger du code à moitié écrit. Avec feature flags, on découple deux choses qui n'ont aucune raison d'être liées : *intégrer* du code (le mettre dans `main`) et *l'activer en production* (le rendre visible aux utilisateurs).
+
+```javascript
+// Pseudo-code : la feature est merge mais désactivée
+if (featureFlags.isEnabled('panier_v2', user)) {
+    return renderPanierV2();
+}
+return renderPanierV1();
+```
+
+Une fois la fonctionnalité prête et testée, on bascule le flag à `true` (déploiement progressif possible : 1 % des utilisateurs, puis 10 %, puis 100 %). Une fois stable et adoptée, le code de l'ancienne version et la condition sont retirés dans une PR de nettoyage.
+
+Outils : [LaunchDarkly](https://launchdarkly.com/), [Unleash](https://www.getunleash.io/), [Flagsmith](https://www.flagsmith.com/), [GrowthBook](https://www.growthbook.io/), ou un simple système maison basé sur une table de configuration.
+
+### TBD vs GitHub Flow : la frontière floue
+
+GitHub Flow et TBD partagent la même architecture de branches (un tronc, des branches courtes, intégration via PR). La différence porte sur le **rythme** et l'**outillage** :
+
+| Critère | GitHub Flow standard | Trunk-Based Development |
+|---------|---------------------|-------------------------|
+| Durée de vie d'une branche | Quelques jours à une semaine | Quelques heures à un jour |
+| Fréquence d'intégration sur `main` | Plusieurs par semaine | Au moins une par jour et par développeur |
+| Feature flags | Optionnels | Indispensables |
+| Couverture de tests minimum | Recommandée | Critique (≥ 70-80 %) |
+| Déploiement | À la demande | Continu, plusieurs fois par jour |
+
+Beaucoup d'équipes commencent en GitHub Flow et glissent vers TBD au fil du temps : la frontière n'est pas un saut brutal, c'est un curseur sur la durée de vie acceptable d'une branche.
+
+### Quand TBD est mal adapté
+
+- **CI lente ou instable** : si la suite de tests prend 45 minutes ou échoue 30 % du temps pour des raisons aléatoires, TBD multiplie les frictions.
+- **Couverture de tests faible** : sans filet automatisé, la pression d'intégration quotidienne se transforme en pression sur des testeurs manuels.
+- **Régulations exigeant des phases de validation explicites** : domaines bancaires, médicaux ou avioniques, où une branche `release/*` matérialise un gel formel.
+- **Équipe encore en apprentissage de l'écriture de tests** : TBD demande une maturité technique qui se construit. Y aller trop tôt produit du code merge en `main` mais cassé.
+
+### Mise en place progressive
+
+1. **Mois 1-2** : raccourcir les branches existantes. Refuser celles qui dépassent une semaine.
+2. **Mois 2-4** : améliorer la CI (parallélisation, mocks, suite rapide < 10 min).
+3. **Mois 4-6** : introduire un système de feature flags, même simple.
+4. **Mois 6-12** : passer à l'intégration quotidienne, avec rétrospective hebdomadaire sur les frictions résiduelles.
+
+Voir [trunkbaseddevelopment.com](https://trunkbaseddevelopment.com/) pour une référence détaillée et illustrée par Paul Hammant.
+
+[Retour en haut de page](#table-des-matières)
+
+## GitFlow : utile, mais souvent surdimensionné
+
+> **Définition — Git Flow.** Modèle de branchement publié par Vincent Driessen en 2010 (« A successful Git branching model »), articulé autour de cinq types de branches : `main` (production), `develop` (intégration), `feature/*`, `release/*`, `hotfix/*`.
+
+Git Flow a été pendant une décennie le modèle de référence enseigné dans les écoles et les tutoriels. Il a influencé toute une génération de développeurs. Mais en 2020, son auteur lui-même a publié [une note rétrospective](https://nvie.com/posts/a-successful-git-branching-model/) précisant que ce modèle a été conçu pour des **logiciels versionnés livrés explicitement**, et qu'il n'est **pas adapté aux applications web déployées en continu** :
+
+> « Git flow was originally designed in 2010 […] for software that is explicitly versioned, or where multiple versions of the software are supported in the wild. […] If your team is doing continuous delivery of software, I would suggest to adopt a much simpler workflow (like GitHub flow) instead. »
+
+### Quand Git Flow est *adapté*
+
+| Contexte | Pourquoi |
+|----------|----------|
+| Logiciel installé chez le client (ERP, CAO, SDK) | Plusieurs versions cohabitent en production. Une branche `release/3.x` existe pour patcher la 3.x pendant que la 4.x se prépare sur `develop`. |
+| Bibliothèque avec compatibilité descendante longue | Les utilisateurs n'upgradent pas à chaque release ; il faut maintenir plusieurs lignes de version. |
+| Logiciel embarqué ou avionique | Validations longues, certifications, gel explicite avant livraison. |
+| Équipe avec un cycle de release planifié (mensuel, trimestriel) | Les branches `release/*` matérialisent les phases de stabilisation. |
+
+### Quand Git Flow est *un fardeau*
+
+| Contexte | Symptôme typique |
+|----------|------------------|
+| SaaS web déployé en continu | `develop` s'éloigne progressivement de `main` ; les merges deviennent douloureux ; personne ne sait laquelle des deux est « la vérité ». |
+| Application mobile à déploiement OTA | Les `release/*` n'ont pas de sens : la version courante remplace la précédente. |
+| Petite équipe (< 5 développeurs) | Le coût mental des cinq types de branches dépasse leur bénéfice. |
+| Pas de hotfixes fréquents en production | La branche `hotfix/*` reste vide et déroute les nouveaux arrivants. |
+
+### Schéma classique
+
+```mermaid
+gitGraph
+    commit id: "v1.0"
+    branch develop
+    commit
+    branch feature/x
+    commit
+    commit
+    checkout develop
+    merge feature/x
+    branch release/1.1
+    commit id: "rc1"
+    checkout main
+    merge release/1.1 tag: "v1.1"
+    checkout develop
+    merge release/1.1
+    checkout main
+    branch hotfix/1.1.1
+    commit
+    checkout main
+    merge hotfix/1.1.1 tag: "v1.1.1"
+    checkout develop
+    merge hotfix/1.1.1
+```
+
+Notez la complexité : pour un seul cycle de release avec un hotfix, on traverse cinq branches et six merges. Multiplié par dix releases par an, l'effort cumulé devient considérable.
+
+### Si vous héritez d'un dépôt Git Flow
+
+- Documentez très clairement quelle branche est la « source de vérité » (presque toujours `main`).
+- Automatisez les merges symétriques (`release/*` → `main` et `release/*` → `develop`) pour éviter l'oubli.
+- Posez la question, avec rétrospective et données : avons-nous *besoin* de Git Flow, ou est-ce un héritage culturel ? Une migration vers GitHub Flow ou TBD est souvent payante après six à douze mois de stabilisation.
+
+[Retour en haut de page](#table-des-matières)
+
+## Forks vs branches partagées
+
+> **Définition — Fork.** Copie complète d'un dépôt sur le compte d'un autre utilisateur ou organisation, conservant un lien vers l'origine pour faciliter les Pull Requests entrantes.
+
+Le choix entre *fork* et *branche dans le dépôt principal* dépend largement du modèle de gouvernance du projet.
+
+### Modèle « fork » (open source, contributions externes)
+
+C'est le modèle standard sur GitHub pour les projets open source. Un contributeur extérieur n'a pas le droit d'écrire dans le dépôt principal ; il doit :
+
+1. Forker le dépôt sur son propre compte.
+2. Créer une branche dans son fork.
+3. Pousser ses commits sur son fork.
+4. Ouvrir une PR depuis `son-compte:feat/x` vers `upstream:main`.
+
+```bash
+# Cloner son fork
+git clone git@github.com:moi/projet.git
+cd projet
+
+# Ajouter le dépôt amont en remote
+git remote add upstream git@github.com:org/projet.git
+
+# Mettre à jour son fork à partir de l'amont
+git fetch upstream
+git switch main
+git rebase upstream/main
+git push origin main
+
+# Préparer une contribution
+git switch -c feat/ma-contribution
+# ... travail, commits ...
+git push origin feat/ma-contribution
+# Puis ouvrir la PR sur GitHub depuis le fork
+```
+
+Avantages :
+
+- Sécurité : les contributeurs externes ne peuvent rien casser dans le dépôt principal.
+- Pas besoin d'accorder un accès en écriture à des inconnus.
+- Le contributeur a un dépôt complet à lui, peut expérimenter librement.
+- Compatible avec une politique de signature DCO ou de CLA (Contributor License Agreement).
+
+Inconvénients :
+
+- Synchronisation manuelle : un fork laissé sans entretien diverge.
+- Les CI complexes (avec secrets) ne tournent pas toujours sur les PR depuis un fork (par défaut, GitHub Actions limite l'accès aux secrets).
+- Légèrement plus lourd à expliquer aux nouveaux contributeurs.
+
+### Modèle « branches partagées » (équipe interne)
+
+Pour une équipe interne de confiance (employés, prestataires sous contrat), créer les branches directement dans le dépôt principal est généralement plus pratique :
+
+- Pas de synchronisation à entretenir.
+- La CI a accès à tous les secrets.
+- Les outils de revue (suggestions, batch comments, push directs sur la PR) fonctionnent au mieux.
+- Les statistiques d'équipe (vélocité, MTTR) sont consolidées dans un seul lieu.
+
+L'accès en écriture est restreint par les protections de branche : on ne peut pas pousser directement sur `main`, on doit passer par PR.
+
+### Comparatif
+
+| Critère | Forks | Branches partagées |
+|---------|-------|---------------------|
+| Public cible | OSS, contributeurs externes, hackathons | Équipes internes |
+| Sécurité | Forte (pas d'accès en écriture amont) | Repose sur les ACL et protections de branche |
+| Friction quotidienne | Moyenne (synchronisation à gérer) | Faible |
+| CI sur PR | Restreinte sur les forks (secrets cachés par défaut) | Pleine |
+| Découvrabilité | Toutes les PR sont au même endroit (côté GitHub) | Idem |
+
+### Cas hybride : forks internes
+
+Certaines grandes organisations utilisent des forks internes (dans la même organisation GitHub) pour isoler le travail des équipes : la sécurité reste forte, et chaque équipe travaille dans son périmètre. C'est une voie intermédiaire pertinente pour les organisations de plus de 100 développeurs.
+
+[Retour en haut de page](#table-des-matières)
+
+## Monorepo vs polyrepo
+
+> **Définition — Monorepo.** Un seul dépôt Git regroupe l'ensemble du code d'une organisation (ou d'un produit) : applications, bibliothèques, outils, infra. Exemples célèbres : Google, Meta, Microsoft (Windows), Twitter (avant 2023).
+>
+> **Définition — Polyrepo.** Chaque service, bibliothèque ou application a son propre dépôt Git, versionné et déployé indépendamment.
+
+Le débat est aussi vieux que les organisations qui dépassent une dizaine de développeurs. Aucun des deux modèles n'est universellement supérieur ; chacun déplace les problèmes plutôt que de les supprimer.
+
+### Comparatif
+
+| Critère | Monorepo | Polyrepo |
+|---------|----------|----------|
+| Refactoring transverse (renommer une API utilisée partout) | Trivial : un seul commit atomique. | Pénible : N PRs coordonnées dans N dépôts, plus la gestion des versions. |
+| Découverte de code | Navigation et recherche unifiées. | Multi-dépôts, multi-IDE, fragmenté. |
+| CI / CD | Outils sophistiqués nécessaires (Bazel, Nx, Turborepo) pour ne builder que ce qui change. | CI standard par dépôt, plus simple à mettre en place. |
+| Permissions par module | Difficile (Git ne sait pas restreindre un sous-répertoire ; CODEOWNERS partiellement). | Native (un dépôt = un ensemble de droits). |
+| Charge sur Git | Croissante avec la taille (10+ Go, 100k+ fichiers). Demande LFS, partial clone, sparse checkout. | Faible : chaque dépôt reste de taille raisonnable. |
+| Couplage entre composants | Tendance à se renforcer (« on est ensemble dans le repo »). | Plus distant, force les contrats d'interface. |
+| Versionnement | Une seule version, partagée. | Chaque dépôt a sa propre version (et ses propres tags). |
+| Onboarding | Un clone, tout est là. | Doit cloner et configurer N dépôts. |
+
+### Quand choisir un monorepo
+
+- L'équipe partage beaucoup de code (composants UI, modèles métier, types).
+- Les refactorings transverses sont fréquents.
+- Une infrastructure CI mature peut être investie (caching distribué, builds incrémentaux, mécanismes de release par dossier).
+- L'organisation est petite à moyenne (jusqu'à quelques centaines de développeurs), ou très grande avec des moyens dédiés.
+
+### Quand choisir un polyrepo
+
+- Les composants ont des cycles de vie indépendants (un SDK public, une lib interne, un service legacy).
+- Les équipes sont autonomes, avec peu d'interdépendances.
+- Pas de budget pour investir dans l'outillage monorepo.
+- Besoin fort d'isoler les permissions (clients sous NDA, code propriétaire vs OSS).
+
+### Outillage monorepo
+
+| Outil | Écosystème | Force |
+|-------|-----------|-------|
+| [Bazel](https://bazel.build/) | Multi-langages | Reproductibilité totale, caching distribué, mais courbe d'apprentissage raide. |
+| [Nx](https://nx.dev/) | JS / TS principalement | Génération de projets, graphe de dépendances, intégration IDE. |
+| [Turborepo](https://turbo.build/repo) | JS / TS | Léger, rapide, caching distribué. |
+| [Pants](https://www.pantsbuild.org/) | Multi-langages | Rust + Python, alternative à Bazel. |
+| [Lerna](https://lerna.js.org/) | JS / TS (publication de packages) | Plus ancien, complémentaire à Turborepo / Nx. |
+
+### Cas intermédiaire : « metarepo »
+
+Un dépôt parent référence plusieurs sous-dépôts via *git submodules* ou *git subtree*. C'est rarement satisfaisant : les submodules ont une réputation mitigée (synchronisation, états détachés, expérience utilisateur déroutante). À considérer uniquement pour des cas très spécifiques (vendoring d'une dépendance modifiée, projet client + livrables figés).
 
 [Retour en haut de page](#table-des-matières)
 
@@ -354,15 +683,17 @@ Git mémorise alors la résolution et la rejoue automatiquement si le même conf
 
 [Retour en haut de page](#table-des-matières)
 
-## Rebase ou merge ?
+## Rebase, merge ou squash : trois stratégies de fusion
 
 > **Définition — Merge.** Création d'un commit de fusion (deux parents) qui réconcilie deux branches divergentes.
 >
 > **Définition — Rebase.** Réécriture de la branche courante : Git détache temporairement vos commits, déplace la base de la branche au sommet d'une autre, puis rejoue vos commits un par un. Les SHA changent.
 >
 > **Définition — Fast-forward.** Cas particulier où la branche cible n'a pas divergé : Git avance simplement le pointeur sans créer de commit de fusion.
+>
+> **Définition — Squash merge.** Mode d'intégration de PR qui fond tous les commits de la branche source en un commit unique posé au sommet de la cible.
 
-Les deux opérations intègrent les commits d'une branche dans une autre, mais ne produisent pas le même historique.
+Les opérations intègrent les commits d'une branche dans une autre, mais ne produisent pas le même historique.
 
 ### Visualisation
 
@@ -431,6 +762,175 @@ git push --force-with-lease   # plus sûr que --force
 - Préservation explicite de l'historique pour audit (réglementaire, sécurité).
 - Branches `release/*` ou `hotfix/*` que l'on veut tracer comme telles.
 - Intégration finale d'une PR dans `main` quand la politique d'équipe est « merge commits seulement ».
+
+### Trois modes d'intégration de PR : squash, rebase, merge commit
+
+GitHub, GitLab et Bitbucket exposent trois façons d'intégrer une PR :
+
+| Mode | Effet sur `main` | Préserve les SHA d'origine ? | Commits intermédiaires conservés ? |
+|------|------------------|------------------------------|-------------------------------------|
+| **Squash and merge** | Un seul commit ajouté, message de la PR. | Non (nouveau commit unique). | Non (les commits de la branche disparaissent de `main`). |
+| **Rebase and merge** | Les commits sont rejoués linéairement au sommet. | Non (nouveaux SHA). | Oui (un par un). |
+| **Create a merge commit** | Un commit de fusion à deux parents. | Oui (les commits originaux sont préservés). | Oui. |
+
+#### Squash and merge
+
+Mode souvent activé par défaut sur GitHub, populaire dans les équipes qui valorisent un `main` linéaire et lisible.
+
+Avantages :
+
+- Un commit = une fonctionnalité, simple à `revert` ou `cherry-pick`.
+- Le bruit des commits exploratoires (« WIP », « fix typo », « ça compile enfin ») ne pollue pas `main`.
+- Le message du commit final reprend le titre et la description de la PR (renvoi vers la discussion complète).
+- `git log --oneline` sur `main` se lit comme un changelog naturel.
+
+Inconvénients :
+
+- **Perte du contexte intermédiaire** : si la PR contient huit commits soigneusement structurés (1. extract function, 2. rename, 3. add test, 4. refactor, 5. add feature…), tout cela est aplati. `git bisect` perd en granularité ; `git blame` montre une seule date au lieu de la progression réelle.
+- Les attributions multiples (co-authoring) sont parfois mal gérées si on oublie d'ajouter les `Co-authored-by:` dans le message squashé.
+- Pour un gros refactor pédagogique, l'intention de la séquence est perdue.
+- L'auteur peut être tenté de pousser des commits désordonnés en se disant « de toute façon ça va être squashé », ce qui appauvrit la qualité de revue intermédiaire.
+
+#### Rebase and merge
+
+Préserve les commits intermédiaires en les rejouant un par un sur `main`. Convient bien aux PR dont chaque commit est *intentionnel* et passe les tests indépendamment.
+
+Avantages :
+
+- Historique linéaire et détaillé.
+- `git bisect` reste fin (chaque commit est testable).
+- Les revues de PR par couche de commits sont préservées dans `main`.
+
+Inconvénients :
+
+- Les SHA changent (par rapport aux commits poussés sur la branche feature) : les liens externes (Slack, Jira, autre PR) deviennent obsolètes.
+- Si un commit intermédiaire ne compile pas, `bisect` peut tomber dessus et donner un résultat trompeur.
+- Discipline requise : un commit « WIP » au milieu d'une suite saine pollue `main`.
+
+#### Create a merge commit
+
+Mode historique. Préserve la topologie réelle (la PR apparaît comme une « bulle » dans l'historique) et tous les SHA d'origine.
+
+Avantages :
+
+- Trace exacte du parallélisme des branches.
+- Audit : on voit immédiatement « ce commit fait partie de la PR #482 ».
+- Aucune réécriture, donc pas de mauvaise surprise sur les SHA.
+
+Inconvénients :
+
+- Historique en treillis difficile à lire dans `git log --oneline`.
+- Génère des commits de fusion superflus si les développeurs mergent souvent `main` dans leur branche en cours de route.
+- Mauvaise expérience si la branche contient 47 commits de WIP.
+
+#### Recommandation pratique
+
+| Type de PR | Mode recommandé |
+|------------|-----------------|
+| Petite PR (< 200 lignes), peu de commits, exploratoire | **Squash and merge**. |
+| PR pédagogique ou refactor en plusieurs étapes propres | **Rebase and merge**. |
+| Branche partagée entre plusieurs développeurs (rare en PR, mais arrive) | **Create a merge commit**. |
+| Politique d'équipe imposant un historique linéaire strict | Squash ou rebase (interdire le merge commit). |
+| Audit réglementaire (finance, santé) exigeant la traçabilité maximale | Merge commit (préserve tous les SHA). |
+
+Beaucoup d'équipes choisissent **squash par défaut** mais permettent **rebase** en option pour les PR dont chaque commit a été soigné. Le pire choix est *ne pas en parler* : laisser chaque développeur cliquer un bouton différent produit un historique incohérent.
+
+[Retour en haut de page](#table-des-matières)
+
+## Stacked PRs : la revue par couches
+
+> **Définition — Stacked PRs.** Pratique consistant à découper une grosse modification en une pile de petites PR dépendantes les unes des autres, chacune basée sur la précédente, plutôt qu'une seule PR géante.
+
+Le *stacked PRs* est devenu populaire dans les équipes qui valorisent les PR petites mais qui veulent toujours pouvoir livrer des fonctionnalités cohérentes. L'approche est popularisée par les outils [Graphite](https://graphite.dev/), [Sapling](https://sapling-scm.com/) (Meta), [Stacked](https://github.com/stacked-pulls), [git-spice](https://abhinav.github.io/git-spice/) et le système interne de Phabricator.
+
+### Le problème que ça résout
+
+Une « grosse » PR de 2 000 lignes pose plusieurs problèmes :
+
+- La revue est superficielle : au-delà de 400 lignes, la qualité de revue chute drastiquement (étude classique de SmartBear, 2011).
+- Le revieweur procrastine : « je regarde demain quand j'aurai du temps », et la PR pourrit.
+- Un seul commentaire bloquant fait recommencer la moitié du travail.
+- Les conflits avec `main` deviennent quasi inévitables.
+
+À l'inverse, une PR de 50 lignes se revue en cinq minutes. Mais une fonctionnalité de 2 000 lignes ne se découpe pas en 40 PR indépendantes : il y a des dépendances. D'où la *pile*.
+
+### Anatomie d'une pile
+
+```text
+main
+ │
+ ├── PR1: feat(panier): extract Pricing service           (50 lignes)
+ │    │
+ │    ├── PR2: feat(panier): add discount strategy        (80 lignes, basée sur PR1)
+ │    │    │
+ │    │    ├── PR3: feat(panier): wire up coupon UI       (120 lignes, basée sur PR2)
+ │    │    │    │
+ │    │    │    └── PR4: feat(panier): integration tests  (60 lignes, basée sur PR3)
+```
+
+Chaque PR est :
+
+- Petite (< 150 lignes idéalement).
+- Auto-cohérente (compile, passe les tests).
+- Revuable indépendamment.
+- Mergée dans l'ordre : PR1 d'abord, puis PR2 rebase automatiquement sur le nouveau `main`, et ainsi de suite.
+
+### Pourquoi c'est dur en Git « nu »
+
+Git seul ne sait pas suivre une pile : si vous modifiez la PR1 (suite à un commentaire de revue), il faut manuellement rebaser PR2, PR3 et PR4 dans l'ordre, puis force-pusher chacune. Une seule erreur et toute la pile s'effondre.
+
+```bash
+# Manuel, pénible :
+git switch pr1
+# corrections
+git push --force-with-lease
+
+git switch pr2
+git rebase pr1
+git push --force-with-lease
+
+git switch pr3
+git rebase pr2
+git push --force-with-lease
+# etc.
+```
+
+### Outils dédiés
+
+| Outil | Particularité |
+|-------|---------------|
+| [Graphite](https://graphite.dev/) | CLI + interface web sur GitHub. `gt sync` rebase toute la pile en une commande. Très adopté en startup US. |
+| [Sapling](https://sapling-scm.com/) | Fork de Mercurial par Meta, compatible avec Git côté serveur. Modèle de stacked diffs natif. |
+| [git-spice](https://abhinav.github.io/git-spice/) | Outil CLI open source, plus léger, sans serveur. |
+| [git-branchless](https://github.com/arxanas/git-branchless) | Suite d'outils pour piles (`git move`, `git restack`). |
+| [ghstack](https://github.com/ezyang/ghstack) | Utilisé par PyTorch / Meta, traduit une pile locale en plusieurs PR GitHub. |
+
+### Workflow type avec Graphite
+
+```bash
+# Créer la base de la pile
+gt create -m "feat(panier): extract Pricing service"
+
+# Ajouter une couche
+gt create -m "feat(panier): add discount strategy"
+
+# Encore une
+gt create -m "feat(panier): wire up coupon UI"
+
+# Synchroniser tout : rebase, push, mise à jour des PR
+gt submit
+```
+
+Si le revieweur demande un changement sur la base, on l'applique localement, puis `gt sync` réordonne et republie toute la pile en une commande.
+
+### Limites et critiques
+
+- Surcoût d'apprentissage pour l'équipe (un nouvel outil à comprendre).
+- Quatre PR à revoir au lieu d'une : le revieweur doit comprendre le contexte global avant de plonger dans chaque couche.
+- Risque de fragmentation excessive : « atomiser » au point de perdre la cohérence.
+- Mauvaise expérience si l'équipe ne pratique pas, parce qu'un seul collègue qui ignore la pile peut merger PR2 avant PR1 et tout casser.
+
+À adopter quand la taille des PR devient un goulet d'étranglement systémique. Pour une équipe de 3-5 personnes avec des PR déjà sous 300 lignes, c'est souvent superflu.
 
 [Retour en haut de page](#table-des-matières)
 
@@ -685,6 +1185,66 @@ Garde-fou : un stash est local et n'est pas poussé. Ne pas l'utiliser comme sto
 
 [Retour en haut de page](#table-des-matières)
 
+## Worktree : plusieurs checkouts en parallèle
+
+> **Définition — Worktree.** Mécanisme natif de Git permettant d'avoir plusieurs répertoires de travail (checkouts) attachés à un même dépôt, chacun positionné sur une branche différente, sans recloner.
+
+`git worktree` est l'une des fonctionnalités les plus sous-utilisées de Git. Elle remplace avantageusement la danse classique `stash → switch → travail → switch → stash pop` lorsqu'une interruption survient.
+
+### Cas typique
+
+Vous travaillez sur `feat/1234-paiement` quand un hotfix urgent arrive. Trois solutions possibles :
+
+1. **Stash + switch** : `git stash`, basculer, fixer, revenir, `git stash pop`. Risque : oublier le stash, conflits au pop, mélanger les contextes.
+2. **Cloner à nouveau le dépôt** : marche, mais long sur un dépôt de plusieurs Go ; double l'espace disque ; deux configurations à maintenir.
+3. **`git worktree`** : ajouter un répertoire de travail supplémentaire, qui partage les objets Git mais a son propre checkout. Instantané, économe en disque, propre.
+
+### Commandes essentielles
+
+```bash
+# Lister les worktrees existants
+git worktree list
+
+# Créer un nouveau worktree pour un hotfix urgent
+git worktree add ../projet-hotfix hotfix/1.4.2 origin/main
+
+# Travailler dans le nouveau répertoire
+cd ../projet-hotfix
+# ... fixer, commiter, pusher ...
+
+# De retour, supprimer le worktree
+cd ../projet
+git worktree remove ../projet-hotfix
+
+# Nettoyer les worktrees orphelins (si on a effacé le dossier à la main)
+git worktree prune
+```
+
+### Bénéfices concrets
+
+- **Pas de stash** : votre travail en cours sur `feat/1234-paiement` reste intact dans son dossier.
+- **Pas de re-build** : les caches d'IDE, de Maven, de `node_modules` du worktree principal ne sont pas perturbés.
+- **Pas de double clone** : les objets Git (commits, blobs, packfiles) sont partagés via `.git/worktrees/`.
+- **Compatible avec les IDE modernes** : VS Code, IntelliJ et JetBrains tools ouvrent un worktree comme un projet à part.
+
+### Cas d'usage courants
+
+| Situation | Worktree adapté |
+|-----------|-----------------|
+| Hotfix urgent pendant un gros refactor | `git worktree add ../proj-hotfix hotfix/x` |
+| Comparaison côte-à-côte de deux branches | `git worktree add ../proj-feat-b feat/b` |
+| Build CI long pendant qu'on continue à coder | Worktree dédié pour la branche en build |
+| Bisect automatisé qui prend du temps | Worktree dédié, le worktree principal reste utilisable |
+| Démo client pendant qu'on travaille sur la suite | `git worktree add ../proj-demo v2.4.0` |
+
+### Limites
+
+- Une même branche ne peut être checkée que dans un seul worktree à la fois (sauf `--force`).
+- Les hooks Git sont partagés via `.git/hooks/` ; leur exécution dépend du contexte du worktree.
+- Les outils qui présupposent un seul checkout (certains scripts artisanaux) peuvent dérouter.
+
+[Retour en haut de page](#table-des-matières)
+
 ## Bisect : retrouver le commit fautif
 
 > **Définition — Bisect.** Recherche dichotomique du commit qui a introduit une régression : Git divise par deux à chaque étape la plage de commits suspects, en se basant sur vos verdicts « bon » / « mauvais ».
@@ -703,9 +1263,9 @@ git bisect good v1.3.0           # cette version-là était saine
 git bisect reset                 # quand c'est fini
 ```
 
-### Mode automatisé
+### Mode automatisé : `git bisect run`
 
-Si vous avez un test qui retourne 0 quand le code est sain et autre chose sinon :
+Si vous avez une commande qui retourne 0 quand le code est sain et autre chose sinon :
 
 ```bash
 git bisect start HEAD v1.3.0
@@ -713,6 +1273,108 @@ git bisect run npm test -- --testPathPattern panier
 ```
 
 Git exécute le test à chaque étape et conclut tout seul. C'est l'argument massue en faveur des commits atomiques : un commit qui mélange refactor et fonctionnalité fait perdre la moitié de l'efficacité de bisect.
+
+### Exemple complet de bug-hunt automatisé
+
+Scénario : la fonction `calculerTotal()` retourne le mauvais montant depuis la version 1.5.0, alors qu'elle était correcte en 1.4.0. Plusieurs centaines de commits séparent les deux versions.
+
+#### Étape 1 — Écrire un test reproducteur minimal
+
+On crée un script `scripts/bisect-test.sh` :
+
+```bash
+#!/usr/bin/env bash
+# scripts/bisect-test.sh
+# Code de sortie :
+#   0   = commit sain
+#   1   = commit fautif
+#   125 = à ignorer (compilation cassée, dépendances absentes, etc.)
+
+set -u
+
+# (1) Réinstaller les dépendances : leur version peut avoir changé entre les commits
+npm ci --prefer-offline --no-audit --silent || exit 125
+
+# (2) S'assurer que le projet compile, sinon ce commit ne nous renseigne pas
+npm run build --silent || exit 125
+
+# (3) Lancer LE test ciblé qui isole le bug
+if npm test -- --testPathPattern 'panier.calcul.total' --silent; then
+    exit 0   # Test passe : commit sain
+else
+    exit 1   # Test échoue : commit fautif
+fi
+```
+
+Important : le code 125 indique à `bisect` que le commit n'est pas testable (build cassé indépendant) et qu'il doit l'ignorer plutôt que de le marquer mauvais. C'est ce qui sauve la session si vous tombez sur un commit intermédiaire qui ne compile pas.
+
+#### Étape 2 — Lancer la chasse
+
+```bash
+chmod +x scripts/bisect-test.sh
+
+# Marquer la dernière version connue saine et la première version connue mauvaise
+git bisect start
+git bisect bad   v1.5.0
+git bisect good  v1.4.0
+
+# Laisser Git automatiser la dichotomie
+git bisect run scripts/bisect-test.sh
+```
+
+Sur 512 commits suspects, Git effectue 9 itérations (log2(512) = 9). Chaque itération checkout un commit, exécute le script, lit le code de retour, choisit la moitié à explorer.
+
+#### Étape 3 — Lire le verdict
+
+```text
+9c4f7e1 is the first bad commit
+commit 9c4f7e1
+Author: Alice <alice@example.com>
+Date:   Tue Mar 12 14:32:18 2024 +0100
+
+    refactor(panier): extraction du calcul TVA
+
+ src/panier/total.ts | 14 +++++++-------
+ 1 file changed, 7 insertions(+), 7 deletions(-)
+```
+
+Git nomme le commit fautif. On termine la session :
+
+```bash
+git bisect reset
+```
+
+#### Étape 4 — Astuces avancées
+
+```bash
+# Sauter un commit qu'on sait défectueux pour une raison non liée
+git bisect skip
+
+# Visualiser le sous-ensemble restant à explorer
+git bisect log
+git bisect visualize
+
+# Reproduire la session ailleurs (script, autre poste)
+git bisect log > bisect-session.log
+git bisect replay bisect-session.log
+
+# Limiter la dichotomie à un sous-répertoire
+git bisect start -- src/panier/
+
+# Combiner avec un worktree pour ne pas geler le checkout principal
+git worktree add ../projet-bisect HEAD
+cd ../projet-bisect
+git bisect start
+# ...
+```
+
+#### Pourquoi ça marche si bien
+
+L'efficacité de `bisect run` repose sur trois conditions :
+
+1. Un test reproductible qui ne dépend pas d'un état extérieur fragile (date, réseau, secret).
+2. Un build qui se relance proprement à chaque commit (utiliser `npm ci`, pas `npm install`).
+3. Des commits atomiques. Un seul commit fautif est trouvé par dichotomie ; si ce commit fait dix choses à la fois, vous savez juste *où* mais pas *quoi*.
 
 [Retour en haut de page](#table-des-matières)
 
@@ -735,7 +1397,286 @@ git reset --hard HEAD@{1}
 git switch -c ma-branche-restored <SHA récupéré dans le reflog>
 ```
 
-Tant qu'un commit apparaît dans le reflog, ses données sont accessibles. Au-delà de 90 jours (configurable), le garbage collector peut les supprimer définitivement.
+Tant qu'un commit apparaît dans le reflog, ses données sont accessibles. Au-delà de 90 jours (configurable via `gc.reflogExpire`), le garbage collector peut les supprimer définitivement.
+
+### Scénarios de récupération concrets
+
+#### Récupérer après un `git reset --hard` malencontreux
+
+```bash
+# Avant le drame
+git log --oneline
+# 3e1f7c2 (HEAD -> main) feat(panier): coupons cumulables
+# a91d3b4 feat(panier): squelette
+# 7c8e0a1 chore: bump deps
+
+# Le drame
+git reset --hard HEAD~3   # adieu trois commits
+
+# Le secours
+git reflog
+# 7c8e0a1 (HEAD -> main) HEAD@{0}: reset: moving to HEAD~3
+# 3e1f7c2 HEAD@{1}: commit: feat(panier): coupons cumulables
+# a91d3b4 HEAD@{2}: commit: feat(panier): squelette
+
+# Restaurer
+git reset --hard HEAD@{1}
+```
+
+Tout est revenu. Le reflog est local : si vous travaillez sur un autre poste qui n'a pas le reflog, vous êtes coincé. D'où l'intérêt de pousser régulièrement sur une branche de sauvegarde.
+
+#### Récupérer une branche supprimée
+
+```bash
+# La branche feat/1234 existait, je l'ai effacée
+git branch -D feat/1234
+
+# Retrouver son dernier SHA via le reflog
+git reflog | grep feat/1234
+# 9c4f7e1 HEAD@{14}: checkout: moving from feat/1234 to main
+
+# Recréer la branche
+git switch -c feat/1234 9c4f7e1
+```
+
+#### Récupérer un commit perdu après un rebase raté
+
+```bash
+# Avant : trois commits sur ma feature
+# Après un rebase -i où j'ai accidentellement remplacé "pick" par "drop"
+
+git reflog
+# 9c4f7e1 HEAD@{0}: rebase finished: returning to refs/heads/feat/x
+# ...
+# a91d3b4 HEAD@{6}: commit: feat: ajout du test e2e   <- perdu après le rebase
+
+# Cherry-pick du commit perdu
+git cherry-pick a91d3b4
+```
+
+#### Trouver un commit orphelin (dangling)
+
+```bash
+# Lister tous les commits non référencés mais encore présents
+git fsck --lost-found
+
+# dangling commit a91d3b4...
+# dangling blob  ...
+
+# Inspecter le contenu
+git show a91d3b4
+git switch -c sauvetage a91d3b4
+```
+
+### Étendre la durée de rétention
+
+Pour une mission longue ou une enquête forensique, on peut prolonger la durée de vie du reflog :
+
+```bash
+git config --global gc.reflogExpire 365.days
+git config --global gc.reflogExpireUnreachable 90.days
+```
+
+Le coût en stockage est négligeable sauf sur des dépôts immenses.
+
+[Retour en haut de page](#table-des-matières)
+
+## Internes Git : objets, refs, packfiles
+
+Comprendre les internes de Git est rarement nécessaire au quotidien, mais devient déterminant dès qu'il faut diagnostiquer un dépôt qui « rame », un push qui n'aboutit pas, ou une maintenance d'urgence.
+
+### La base d'objets
+
+Tous les objets Git vivent sous `.git/objects/`. Chaque objet est compressé en zlib, identifié par le SHA-1 (ou SHA-256) de son contenu, et stocké dans un fichier dont le chemin est construit à partir des deux premiers caractères du SHA :
+
+```text
+.git/objects/3e/1f7c2a91d3b4...   <- contenu zlib
+```
+
+Quatre types d'objets :
+
+| Type | Contenu | Inspection |
+|------|---------|-----------|
+| **blob** | Le contenu brut d'un fichier (sans nom, sans permissions). | `git cat-file -p <SHA>` |
+| **tree** | La liste « nom + permissions + SHA blob/tree » d'un répertoire. | `git cat-file -p <SHA>` |
+| **commit** | Pointeur vers un tree, parents, auteur, committer, message. | `git cat-file -p <SHA>` |
+| **tag annoté** | Pointeur vers un commit (ou un autre objet), auteur, message, signature. | `git cat-file -p <SHA>` |
+
+```bash
+# Type d'un objet
+git cat-file -t 3e1f7c2
+
+# Contenu lisible
+git cat-file -p HEAD
+# tree 4f9a2b8c...
+# parent a91d3b4...
+# author Alice <alice@example.com> 1735689600 +0100
+# committer Alice <alice@example.com> 1735689600 +0100
+#
+# feat(panier): coupons cumulables
+
+# Le tree pointé par le commit
+git cat-file -p HEAD^{tree}
+# 100644 blob 7c8e0a1... package.json
+# 040000 tree 9c4f7e1... src
+```
+
+### Les références (refs)
+
+Sous `.git/refs/`, des fichiers texte contiennent simplement un SHA :
+
+```text
+.git/refs/heads/main           <- 3e1f7c2a91d3b4...
+.git/refs/heads/feat/1234      <- a91d3b47c8e0a1...
+.git/refs/tags/v1.4.0          <- 9c4f7e1f4b9d22...
+.git/refs/remotes/origin/main  <- 3e1f7c2a91d3b4...
+```
+
+`HEAD` est un cas spécial : c'est un fichier `.git/HEAD` qui contient soit un SHA (état détaché) soit `ref: refs/heads/main` (pointe vers une branche).
+
+Pour économiser de l'espace, Git regroupe parfois ces fichiers dans `.git/packed-refs`.
+
+### Les packfiles
+
+Stocker chaque objet dans un fichier individuel devient inefficace pour des dépôts de centaines de milliers d'objets. Git regroupe alors les objets dans des *packfiles* (`.git/objects/pack/pack-*.pack`), avec un index (`.idx`) pour la recherche rapide. Les versions successives d'un même fichier sont stockées en *delta* (différence binaire), ce qui économise drastiquement la place.
+
+```bash
+# Forcer un packing
+git gc
+
+# Plus agressif : recompacter tout
+git gc --aggressive --prune=now
+
+# Inspecter les packfiles
+git verify-pack -v .git/objects/pack/pack-*.idx | sort -k 3 -n | tail -20
+# Liste les 20 plus gros objets, utile pour traquer un binaire qui pèse 500 Mo
+```
+
+### Diagnostiquer un dépôt lent
+
+| Symptôme | Cause probable | Diagnostic |
+|----------|----------------|-----------|
+| `git status` lent | Beaucoup de fichiers non suivis ou hooks lents. | `git status -uno`, `core.untrackedCache=true`, `core.fsmonitor=true`. |
+| `git log` lent | Reflog géant ou packfiles non optimisés. | `git gc`, `git reflog expire`. |
+| `git push` lent | Gros binaire dans l'historique. | `git verify-pack` pour identifier ; `git filter-repo` pour purger. |
+| Clone très long | Histoire profonde, beaucoup d'objets. | `git clone --depth=1` (clone superficiel) ou `--filter=blob:none` (partial clone). |
+| `.git` énorme | Binaires non en LFS, historique non purgé. | LFS, `git filter-repo`. |
+
+### Maintenance régulière
+
+Git 2.30+ propose `git maintenance`, qui automatise les tâches de gc, prefetch, packing :
+
+```bash
+# Activer la maintenance automatique en arrière-plan
+git maintenance start
+
+# Lancer ponctuellement
+git maintenance run --task=gc --task=commit-graph
+```
+
+Sur un dépôt actif, exécuter `git gc` une fois par semaine suffit en général à maintenir des performances correctes.
+
+[Retour en haut de page](#table-des-matières)
+
+## Gros dépôts : LFS, sparse checkout, partial clone
+
+Les équipes modernes manipulent des monorepos de 10, 50 voire plusieurs centaines de Go (jeu vidéo, ML, design assets). Git seul ne tient pas la charge ; trois mécanismes complémentaires existent.
+
+### Git LFS : déporter les gros binaires
+
+> **Définition — Git LFS (Large File Storage).** Extension de Git qui remplace les gros fichiers binaires (images, vidéos, modèles ML, exécutables) par un *pointeur texte* dans le dépôt Git, le contenu réel étant stocké séparément sur un serveur LFS.
+
+Sans LFS, chaque modification d'un gros binaire est stockée en delta dans la base d'objets : un dépôt avec 100 versions d'une vidéo de 500 Mo finit à 50 Go. Avec LFS, le binaire actuel pèse seulement son poids réel, et l'historique pointe vers les versions distantes.
+
+```bash
+# Installer (une fois par poste)
+git lfs install
+
+# Déclarer les types de fichiers à stocker en LFS
+git lfs track "*.psd"
+git lfs track "*.zip"
+git lfs track "*.bin"
+git lfs track "*.mp4"
+
+# Cela écrit dans .gitattributes :
+# *.psd filter=lfs diff=lfs merge=lfs -text
+
+# Commiter normalement
+git add .gitattributes design.psd
+git commit -m "chore: ajout du PSD via LFS"
+git push
+```
+
+Le dépôt Git ne contient qu'un pointeur texte (~130 octets) ; le binaire vit sur le serveur LFS de GitHub / GitLab / un serveur self-hosted.
+
+#### Pièges LFS
+
+- **Migrer un dépôt existant** : `git lfs migrate import --include="*.psd" --everything` réécrit l'historique. Force-push obligatoire.
+- **Coût** : GitHub facture le stockage et la bande passante LFS au-delà du quota gratuit (1 Go offert). Surveiller la consommation.
+- **Clone partiel par défaut** : `GIT_LFS_SKIP_SMUDGE=1 git clone ...` pour récupérer les pointeurs sans télécharger les binaires immédiatement (utile en CI qui n'en a pas besoin).
+- **Pas adapté à tout** : pour quelques fichiers de quelques Mo, LFS est superflu. Réservez-le aux binaires de plusieurs dizaines de Mo qui changent souvent.
+
+### Partial clone : ne télécharger que ce qu'on lit
+
+> **Définition — Partial clone.** Clone qui omet certains objets (typiquement les blobs) lors de la récupération initiale, et les télécharge à la demande au moment du checkout ou de la lecture.
+
+```bash
+# Clone sans aucun blob (les arbres et commits sont là, le contenu des fichiers vient au checkout)
+git clone --filter=blob:none git@github.com:org/monorepo.git
+
+# Clone sans les blobs > 1 Mo
+git clone --filter=blob:limit=1m git@github.com:org/monorepo.git
+
+# Clone sans aucun arbre (encore plus radical)
+git clone --filter=tree:0 git@github.com:org/monorepo.git
+```
+
+Au premier `git checkout` sur une branche, Git récupère à la volée les blobs nécessaires. Sur un monorepo de 50 Go, le gain de temps de clone passe de 30 minutes à 30 secondes.
+
+### Sparse checkout : ne déployer qu'une partie de l'arbre
+
+> **Définition — Sparse checkout.** Mécanisme qui restreint le contenu *matérialisé* dans le répertoire de travail à un sous-ensemble du dépôt, tout en gardant l'historique complet.
+
+Combiné avec un partial clone, on obtient l'expérience d'un dépôt léger sur disque malgré une histoire massive en amont.
+
+```bash
+# Activer
+git sparse-checkout init --cone
+
+# Déclarer les répertoires qu'on veut voir
+git sparse-checkout set apps/web libs/ui libs/shared
+
+# Vérifier ce qui est matérialisé
+git sparse-checkout list
+
+# Désactiver (récupérer tout)
+git sparse-checkout disable
+```
+
+Le mode `--cone` est plus rapide et plus prévisible que le mode complet (basé sur des motifs `.gitignore`), au prix d'une expressivité réduite (on ne peut sélectionner que des sous-répertoires entiers).
+
+### Combo gagnant pour un monorepo
+
+```bash
+# Cloner intelligemment un monorepo de 50 Go
+git clone --filter=blob:none --no-checkout git@github.com:org/monorepo.git
+cd monorepo
+git sparse-checkout init --cone
+git sparse-checkout set apps/mon-app libs/utilises-par-mon-app
+git checkout main
+```
+
+Résultat : sur disque, seuls les répertoires nécessaires sont déployés. L'historique est complet (on peut faire `git log`, `git blame`), les blobs absents seront récupérés à la demande.
+
+### Stratégies complémentaires
+
+| Stratégie | Utile pour |
+|-----------|-----------|
+| `git clone --depth=1` (shallow clone) | CI, déploiements, agents qui n'ont pas besoin de l'historique. |
+| `git fetch --filter=blob:none` | Réduire la bande passante des fetchs incrémentaux. |
+| Submodules | À éviter sauf besoin précis : expérience utilisateur déroutante. |
+| Subtree | Vendoring d'une dépendance externe : alternative aux submodules, sans état détaché. |
+| Scalar / VFS for Git | Solutions Microsoft pour des dépôts énormes (Windows source). |
 
 [Retour en haut de page](#table-des-matières)
 
@@ -845,7 +1786,7 @@ git config --global core.excludesFile ~/.gitignore_global
 
 [Retour en haut de page](#table-des-matières)
 
-## Le fichier .gitattributes
+## Le fichier .gitattributes et la normalisation CRLF
 
 > **Définition — `.gitattributes`.** Fichier qui attache des attributs aux chemins du dépôt : fins de ligne, traitement diff, fichiers binaires, prise en charge de Git LFS, export-ignore.
 
@@ -889,6 +1830,79 @@ tests/          export-ignore
 ### Pourquoi c'est important pour une équipe mixte Windows / macOS / Linux
 
 Sans `.gitattributes`, deux développeurs sur deux OS différents finissent par produire des diffs vides remplis uniquement de changements de fins de ligne. La règle `* text=auto eol=lf` règle ce problème une fois pour toutes en imposant LF dans le dépôt et en laissant Git convertir au checkout selon l'OS.
+
+### Le problème CRLF en détail
+
+Historique : Windows utilise `CRLF` (`\r\n`) en fin de ligne, héritage des télétypes IBM. macOS / Linux utilisent `LF` (`\n`). Ouvrir un fichier `LF` dans le Bloc-notes Windows historique affiche tout sur une ligne ; ouvrir un fichier `CRLF` dans certains outils Linux fait apparaître `^M` à la fin de chaque ligne.
+
+Sans normalisation, voici ce qui se passe :
+
+1. Alice (Linux) crée `app.js` en `LF` et le commite.
+2. Bob (Windows) clone, son éditeur convertit le fichier en `CRLF` à l'enregistrement.
+3. Bob commite : *toutes* les lignes apparaissent comme modifiées dans le diff, alors qu'il n'a touché qu'une seule ligne.
+4. Alice tire les changements de Bob, son éditeur reconvertit en `LF`, et chaque va-et-vient produit un diff catastrophique.
+5. Le `git blame` est ruiné : chaque ligne est attribuée au dernier qui a sauvegardé.
+
+### Trois leviers complémentaires
+
+| Levier | Effet | Recommandation |
+|--------|-------|----------------|
+| `core.autocrlf` (config Git locale) | `true` sur Windows : convertit en CRLF au checkout, en LF au commit. `input` sur Linux/macOS : pas de conversion au checkout, LF au commit. `false` : pas de conversion. | Acceptable comme repli, mais dépend de la config de chaque poste. |
+| `.gitattributes` avec `* text=auto eol=lf` | Politique versionnée dans le dépôt, s'applique à tous les contributeurs. | **À privilégier** : la règle voyage avec le dépôt. |
+| `.editorconfig` à la racine | Indique aux IDE la convention (indentation, fin de ligne, charset). | Complémentaire : règle aussi le problème dès l'édition. |
+
+### Recette qui marche
+
+```gitattributes
+# .gitattributes — politique standard
+* text=auto eol=lf
+
+# Forcer LF même sur Windows (scripts shell qui ne tolèrent pas CRLF)
+*.sh   text eol=lf
+*.bash text eol=lf
+
+# Forcer CRLF pour les fichiers Windows-only
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Marquer comme binaire (pas de conversion, pas de diff textuel)
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.xlsx binary
+*.docx binary
+```
+
+```ini
+# .editorconfig — recommandation IDE
+root = true
+
+[*]
+end_of_line = lf
+charset = utf-8
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.{bat,cmd,ps1}]
+end_of_line = crlf
+```
+
+### Migrer un dépôt qui a déjà du CRLF dans son historique
+
+Si l'historique est déjà pollué, une réécriture en masse remet les pendules à l'heure :
+
+```bash
+# 1. Ajouter ou mettre à jour .gitattributes (cf. ci-dessus).
+git add .gitattributes
+git commit -m "chore: normalisation des fins de ligne"
+
+# 2. Renormaliser tout l'index.
+git add --renormalize .
+git commit -m "chore: renormalisation des fins de ligne sur tout le dépôt"
+```
+
+`--renormalize` re-stocke chaque fichier en respectant la nouvelle politique `.gitattributes`, sans modifier leur contenu côté texte (juste les sauts de ligne).
 
 [Retour en haut de page](#table-des-matières)
 
@@ -994,6 +2008,58 @@ repos:
 
 Installation : `pip install pre-commit && pre-commit install --hook-type pre-commit --hook-type commit-msg`.
 
+### Limites des hooks : la CI reste le vrai garde-fou
+
+Les hooks Git locaux ont une limite fondamentale : **ils peuvent être contournés**. Tout développeur peut, volontairement ou non, ignorer un hook qui le gêne :
+
+```bash
+# Saute pre-commit ET commit-msg
+git commit --no-verify -m "fix: hotfix urgent"
+
+# Saute pre-push
+git push --no-verify
+
+# Désactivation complète des hooks
+git config core.hooksPath /dev/null
+```
+
+Conséquences pratiques :
+
+- Un secret peut être commité malgré `gitleaks` en `pre-commit`, si l'auteur tape `--no-verify` (parfois par habitude, parfois par urgence ressentie).
+- Un message non conforme passe si `commit-msg` est sauté.
+- Les linters et tests rapides ne s'exécutent plus.
+
+Le hook est donc un **assistant**, pas un **gardien**. Le vrai gardien est la **CI / le serveur** :
+
+| Garde-fou | Forçabilité par le développeur | Couverture |
+|-----------|-------------------------------|-----------|
+| `pre-commit` local | Contournable (`--no-verify`). | Avant le commit, sur le poste de l'auteur. |
+| Hooks côté serveur (Git natif `pre-receive`) | Non contournable, mais nécessite un serveur Git auto-hébergé pour les configurer. | Au push, refus définitif si le hook échoue. |
+| **CI (GitHub Actions, GitLab CI, Jenkins)** | **Non contournable**. | Sur chaque PR / commit poussé, exécutée par la plateforme. |
+| Branch protection (« required status checks ») | Bloque le merge si la CI n'est pas verte. | Au moment du merge dans `main`. |
+| Secret scanning côté plateforme | Non contournable. | À chaque push, sur le serveur. |
+
+### Stratégie recommandée
+
+| Contrôle | Côté hook local | Côté CI |
+|----------|-----------------|---------|
+| Lint rapide | Oui (feedback immédiat) | Oui (vérité) |
+| Format auto | Oui (corrige avant commit) | Vérification (refuser si pas formaté) |
+| Tests unitaires rapides | Optionnel | **Oui, obligatoire** |
+| Tests d'intégration | Non (trop lents) | **Oui** |
+| Scan de secrets | Oui (interception précoce) | **Oui, obligatoire** (filet de sécurité) |
+| Conventional Commits | Oui | Oui (sur le titre de PR) |
+| Build de production | Non | **Oui** |
+| Audit de licences, dépendances vulnérables | Non | **Oui** |
+
+Règle d'or : tout ce qui doit être *garanti* avant un merge doit tourner en CI. Les hooks locaux sont un **gain d'ergonomie** (feedback en 2 secondes au lieu de 5 minutes), pas une garantie.
+
+### Hooks côté serveur
+
+Sur un serveur Git auto-hébergé (Gitea, GitLab self-managed, Bitbucket Server), on peut configurer des hooks `pre-receive` ou `update` qui s'exécutent à chaque push et qu'aucun client ne peut contourner. C'est la seule manière de garantir, par exemple, qu'aucun secret ne franchit jamais la frontière vers le dépôt.
+
+GitHub.com ne permet pas de hooks `pre-receive` personnalisés (sauf sur GitHub Enterprise Server) ; il faut s'appuyer sur GitHub Actions et les *required status checks* à la place.
+
 [Retour en haut de page](#table-des-matières)
 
 ## Pull Requests : la revue comme garde-fou
@@ -1041,6 +2107,148 @@ Lister les changements clés en une dizaine de lignes maximum.
 - Do not allow bypassing the above settings.
 - Restrict who can push to matching branches.
 - Disallow force pushes.
+
+[Retour en haut de page](#table-des-matières)
+
+## Protection de branche côté GitHub
+
+GitHub propose deux générations d'outils pour verrouiller `main` : les *Branch protection rules* (historiques) et les *Rulesets* (depuis 2023, plus puissants). Cette section détaille les options critiques.
+
+### Required reviewers
+
+Sous **Settings → Branches → Add rule** (ou **Rulesets → New ruleset**) :
+
+| Option | Effet | Recommandation |
+|--------|-------|----------------|
+| **Require a pull request before merging** | Interdit les push directs sur la branche. | **Activer toujours** sur `main`. |
+| **Require approvals (1 minimum)** | N revues approuvées avant merge. | 1 minimum, 2 sur projets sensibles ou réglementés. |
+| **Dismiss stale pull request approvals when new commits are pushed** | Si l'auteur pousse de nouveaux commits, les approbations précédentes sont annulées. | **Activer**, sinon une PR approuvée tôt peut être modifiée silencieusement avant merge. |
+| **Require review from Code Owners** | Force la revue par les responsables désignés dans `.github/CODEOWNERS`. | Activer dès qu'un fichier `CODEOWNERS` existe. |
+| **Restrict who can dismiss pull request reviews** | Limite la levée d'une revue bloquante. | Activer pour éviter qu'un auteur ne lève sa propre revue critique. |
+| **Allow specified actors to bypass required pull requests** | Liste blanche d'utilisateurs ou bots qui contournent la règle. | À utiliser avec parcimonie : Dependabot, Renovate, release-bot. |
+
+#### Exemple `CODEOWNERS`
+
+```text
+# .github/CODEOWNERS
+
+# Par défaut : l'équipe core revoit tout
+*                    @org/core-team
+
+# La sécurité revoit le périmètre auth
+/src/auth/           @org/security
+/src/crypto/         @org/security
+
+# Le frontend a son équipe
+/apps/web/           @org/frontend
+/libs/ui/            @org/frontend
+
+# La doc peut être merge sans revue technique
+/docs/               @org/tech-writers
+
+# Les workflows CI sont sensibles : double revue
+/.github/workflows/  @org/devops @org/security
+```
+
+GitHub bloque le merge tant que les owners désignés n'ont pas approuvé.
+
+### Required status checks
+
+| Option | Effet |
+|--------|-------|
+| **Require status checks to pass before merging** | Bloque le merge tant que la CI n'est pas verte. |
+| **Require branches to be up to date before merging** | Force un rebase / merge de `main` dans la PR avant le merge final. Plus strict mais évite les régressions de type « la PR seule passait, mais en combinaison avec un autre merge récent ça casse ». |
+| Liste des checks requis | Cocher explicitement : `build`, `test`, `lint`, `security-scan`, etc. |
+
+Attention : un check requis qui n'est jamais lancé (parce que le workflow ne se déclenche pas sur la PR) bloque indéfiniment le merge. Vérifier que les triggers de workflow correspondent aux required checks.
+
+### Signed commits, linear history, conversation resolution
+
+| Option | Effet | Quand activer |
+|--------|-------|---------------|
+| **Require signed commits** | Refuse les commits non signés (GPG ou SSH). | Projets sensibles (sécurité, supply chain). Toute l'équipe doit savoir signer. |
+| **Require linear history** | Interdit les merge commits (force squash ou rebase). | Si l'équipe veut un `main` linéaire absolu. |
+| **Require conversation resolution before merging** | Bloque tant qu'il reste des commentaires non résolus. | Bonne pratique : oblige à répondre à chaque remarque. |
+| **Require deployments to succeed before merging** | Couple le merge à un déploiement de staging réussi. | Avancé : équipes avec environnements de preview par PR. |
+
+### Force push et suppression
+
+| Option | Effet | Recommandation |
+|--------|-------|----------------|
+| **Allow force pushes** | Si désactivé : aucun force push possible, même par les admins. | Désactiver sur `main`, `release/*`, branches protégées. |
+| **Allow deletions** | Si désactivé : la branche ne peut pas être supprimée. | Désactiver sur `main`. |
+| **Lock branch** | Branche en lecture seule : aucun push, même via PR. | Pour les branches archivées (vieilles releases). |
+
+### Le piège des « bypass admins »
+
+Par défaut, dans les *classic branch protection rules*, les administrateurs du dépôt peuvent contourner toutes les règles. C'est une commodité dangereuse : le compte admin devient une porte dérobée permanente.
+
+| Option | Effet |
+|--------|-------|
+| **Do not allow bypassing the above settings** (classic) | Applique la règle aux admins eux-mêmes. |
+| **Restrict who can bypass these rules** (rulesets) | Liste blanche explicite des contournements autorisés. |
+
+**Règle de gouvernance** : un admin légitime n'a pas besoin de contourner la règle ; il peut ouvrir une PR et la faire approuver comme tout le monde. Activer le bypass admins, c'est en réalité un signal « personne ne fait vraiment respecter la règle ».
+
+Audit : GitHub journalise toute tentative de bypass dans l'audit log (visible côté Organization → Settings → Audit log). Sur un projet sensible, mettre en place une alerte sur ces événements.
+
+### Rulesets vs Branch protection rules (classic)
+
+GitHub recommande désormais les **Rulesets** (2023+) :
+
+| Avantage des Rulesets | Détail |
+|----------------------|--------|
+| Couvrent plusieurs branches via patterns | `main`, `release/**`, `hotfix/**` en un seul ruleset. |
+| Mode « Evaluate » | Tester une règle sans l'appliquer ; observer les violations potentielles avant de durcir. |
+| Liste de bypass plus fine | Granularité par utilisateur, équipe ou app GitHub. |
+| Versionnés en JSON | Exportables, importables, intégrables dans une infra-as-code. |
+| Couvrent aussi les tags | Un ruleset peut protéger les tags `v*` contre la suppression. |
+
+Migration : les anciennes branch protection rules continuent de fonctionner en parallèle ; en cas de conflit, la règle la plus stricte gagne. Migrer progressivement, avec une phase d'évaluation en mode « audit only ».
+
+### Exemple de ruleset JSON
+
+```json
+{
+  "name": "Protection main",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": ["refs/heads/main", "refs/heads/release/**"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    { "type": "deletion" },
+    { "type": "non_fast_forward" },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 2,
+        "dismiss_stale_reviews_on_push": true,
+        "require_code_owner_review": true,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          { "context": "build" },
+          { "context": "test" },
+          { "context": "lint" }
+        ]
+      }
+    },
+    { "type": "required_signatures" }
+  ],
+  "bypass_actors": []
+}
+```
+
+`bypass_actors: []` signifie : **personne** n'échappe à la règle, pas même le owner de l'organisation. C'est l'option la plus sûre.
 
 [Retour en haut de page](#table-des-matières)
 
@@ -1155,6 +2363,46 @@ git stash                           # mettre de côté
 git merge --abort                   # annuler un merge en cours
 git rebase --abort                  # annuler un rebase en cours
 git cherry-pick --abort             # annuler un cherry-pick en cours
+git fsck --lost-found               # retrouver des objets orphelins
+```
+
+### Travailler sur plusieurs choses en parallèle
+
+```bash
+git worktree add ../proj-hotfix hotfix/x   # nouveau checkout dans un autre dossier
+git worktree list                          # lister les worktrees
+git worktree remove ../proj-hotfix         # nettoyer
+```
+
+### Gros dépôts
+
+```bash
+git clone --filter=blob:none <url>         # partial clone (blobs à la demande)
+git clone --depth=1 <url>                  # shallow clone (CI, agents)
+git sparse-checkout init --cone            # restreindre l'arbre matérialisé
+git sparse-checkout set apps/web libs/ui   # ne déployer qu'un sous-ensemble
+git lfs track "*.psd"                      # déporter les gros binaires
+git gc                                     # repacker le dépôt
+git maintenance start                      # maintenance automatique en arrière-plan
+```
+
+### Réutiliser des résolutions de conflit
+
+```bash
+git config --global rerere.enabled true    # activer rerere
+git rerere status                          # voir ce qui est mémorisé
+git rerere clear                           # purger les résolutions enregistrées
+```
+
+### Internes : inspecter les objets
+
+```bash
+git cat-file -t <SHA>                      # type d'un objet
+git cat-file -p <SHA>                      # contenu lisible
+git rev-parse HEAD                         # SHA complet de HEAD
+git rev-parse HEAD^{tree}                  # SHA du tree pointé par HEAD
+git verify-pack -v .git/objects/pack/*.idx | sort -k 3 -n | tail -20
+                                           # 20 plus gros objets (chasse aux binaires)
 ```
 
 [Retour en haut de page](#table-des-matières)
@@ -1167,12 +2415,27 @@ git cherry-pick --abort             # annuler un cherry-pick en cours
 - [Atlassian Git Tutorials](https://www.atlassian.com/fr/git/tutorials)
 - [Oh My Git! - apprendre Git en jouant](https://ohmygit.org/)
 - [Learn Git Branching - exercices interactifs](https://learngitbranching.js.org/?locale=fr_FR)
-- [Trunk Based Development](https://trunkbaseddevelopment.com/)
+- [Trunk Based Development - le site de référence](https://trunkbaseddevelopment.com/)
+- [Vincent Driessen - note rétrospective sur Git Flow (2020)](https://nvie.com/posts/a-successful-git-branching-model/)
 - [GitHub Flow](https://docs.github.com/fr/get-started/using-github/github-flow)
+- [State of DevOps Report (Google / DORA)](https://cloud.google.com/devops/state-of-devops)
+- [Monorepo.tools - panorama des outils monorepo](https://monorepo.tools/)
+- [Graphite - stacked PRs sur GitHub](https://graphite.dev/)
+- [Sapling SCM (Meta)](https://sapling-scm.com/)
 - [git-filter-repo](https://github.com/newren/git-filter-repo)
 - [BFG Repo-Cleaner](https://rtyley.github.io/bfg-repo-cleaner/)
 - [pre-commit framework](https://pre-commit.com/)
+- [Husky (hooks Git pour Node)](https://typicode.github.io/husky/)
+- [Lefthook (hooks multi-langages)](https://github.com/evilmartians/lefthook)
+- [Git LFS](https://git-lfs.com/)
+- [Git partial clone (documentation officielle)](https://git-scm.com/docs/partial-clone)
+- [Git sparse-checkout (documentation officielle)](https://git-scm.com/docs/git-sparse-checkout)
+- [Git worktree (documentation officielle)](https://git-scm.com/docs/git-worktree)
+- [Git rerere (documentation officielle)](https://git-scm.com/docs/git-rerere)
 - [GitHub - signature de commits](https://docs.github.com/fr/authentication/managing-commit-signature-verification)
+- [GitHub - signature SSH](https://docs.github.com/fr/authentication/managing-commit-signature-verification/about-commit-signature-verification#ssh-commit-signature-verification)
+- [GitHub Rulesets](https://docs.github.com/fr/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets)
+- [GitHub CODEOWNERS](https://docs.github.com/fr/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners)
 
 ## Licence
 
