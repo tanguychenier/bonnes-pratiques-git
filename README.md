@@ -40,17 +40,23 @@
 
 ## Introduction
 
-Ce dépôt rassemble les pratiques que l'on retient en équipe pour qu'un dépôt Git reste lisible, sûr et auditable. La référence canonique est le livre [Pro Git](https://git-scm.com/book/fr/v2) de Scott Chacon et Ben Straub, librement consultable.
+> **Que veut dire « Git » ?** Git est un logiciel qui enregistre l'historique de vos fichiers, un peu comme un appareil photo qui prendrait une photo de tout votre projet à chaque fois que vous le décidez. Vous pouvez revenir à n'importe quelle photo passée, comparer deux photos, ou travailler à plusieurs sans écraser le travail des autres. Le mot « Git » désigne le programme ; un « dépôt » (en anglais *repository*, souvent abrégé *repo*) est l'album qui contient toutes ces photos plus le code.
 
-Le mémo s'adresse à un public débutant à intermédiaire. Chaque notion technique est définie à sa première apparition, dans un encadré **Définition** dédié, puis approfondie dans la section correspondante. Les exemples sont donnés en Bash ; ils fonctionnent à l'identique dans Git Bash sous Windows, dans WSL, ou dans un terminal macOS / Linux.
+Git enregistre l'historique d'un projet pour qu'il reste lisible, sûr et vérifiable. La référence la plus complète est le livre [Pro Git](https://git-scm.com/book/fr/v2) de Scott Chacon et Ben Straub, gratuit en ligne.
 
-> Conventions adoptées dans ce mémo : la branche d'intégration s'appelle `main` (renommage par défaut sur GitHub depuis 2020) ; les messages de commit suivent [Conventional Commits](https://www.conventionalcommits.org/fr/) ; les commandes sont exécutées dans un terminal compatible Bash ; on suppose un dépôt distant nommé `origin`.
+Chaque notion technique est expliquée à sa première apparition, dans un encadré dédié, avec une comparaison du quotidien, puis approfondie dans la section correspondante. Les exemples sont donnés en Bash, un langage de commandes pour piloter l'ordinateur en tapant du texte. Ils fonctionnent à l'identique dans Git Bash sous Windows, dans WSL (la couche Linux intégrée à Windows) et dans un terminal macOS ou Linux.
+
+> **Que veut dire « Bash » ?** Bash est un interpréteur de commandes : un programme dans lequel vous tapez une instruction (par exemple `git status`), vous appuyez sur Entrée, et l'ordinateur l'exécute. C'est comme dicter des ordres courts à un assistant qui les exécute immédiatement, au lieu de cliquer dans des menus.
+
+Conventions retenues dans tout le document : la branche principale d'intégration (la ligne de référence du projet) s'appelle `main`, qui est le nom par défaut sur GitHub depuis 2020. Les messages de commit suivent [Conventional Commits](https://www.conventionalcommits.org/fr/), une norme d'écriture détaillée plus bas. Les commandes s'exécutent dans un terminal compatible Bash. On suppose un dépôt distant (la copie de référence hébergée sur un serveur) nommé `origin`.
 
 [Retour en haut de page](#table-des-matières)
 
 ## Glossaire express
 
-Ce glossaire fixe le vocabulaire utilisé dans tout le document. Les sections suivantes y reviennent en détail ; gardez-le sous la main lors d'une première lecture.
+Ce vocabulaire revient dans tout le document. Les sections suivantes l'approfondissent.
+
+> **Que veut dire « SHA » ?** SHA (prononcé « cha ») veut dire *Secure Hash Algorithm*, c'est-à-dire « algorithme de hachage sécurisé ». Concrètement, c'est une fonction qui transforme un contenu (un fichier, un commit) en une longue empreinte unique de chiffres et de lettres, par exemple `3e1f7c2a91d3b4...`. C'est comme une empreinte digitale : deux contenus différents donnent deux empreintes différentes, et la même empreinte garantit le même contenu. Git utilise ces empreintes pour nommer et retrouver chaque élément sans ambiguïté.
 
 | Terme | Définition courte |
 |-------|-------------------|
@@ -78,18 +84,30 @@ Ce glossaire fixe le vocabulaire utilisé dans tout le document. Les sections su
 
 ## Modèle mental : ce que Git stocke réellement
 
-Comprendre la structure de stockage évite la majorité des malentendus. Git n'est pas un système de différentiels (« delta ») mais une base d'objets adressés par leur empreinte (SHA-1 par défaut, SHA-256 dans les dépôts récents).
+Comprendre comment Git range les données évite la majorité des malentendus. Git ne stocke pas seulement les différences entre versions (les « delta », c'est-à-dire les écarts d'une version à l'autre). Il stocke une base d'objets, chacun désigné par son empreinte SHA. Par défaut cette empreinte est calculée avec SHA-1 ; les dépôts récents peuvent utiliser SHA-256, plus robuste.
 
-Quatre types d'objets composent la base :
+Quatre types d'objets composent cette base :
 
 | Objet | Rôle |
 |-------|------|
 | **Blob** | Contenu d'un fichier (sans nom ni chemin). |
 | **Tree** | Répertoire : table associant des noms à des blobs ou à d'autres trees. |
-| **Commit** | Pointeur vers un tree (l'instantané), un ou plusieurs commits parents, un auteur, un committer, une date, un message. |
+| **Commit** | Pointeur vers un tree (l'instantané), un ou plusieurs commits parents, un auteur, un committer (la personne qui valide l'enregistrement), une date, un message. |
 | **Tag annoté** | Pointeur signé vers un commit, avec auteur, date et message. |
 
-À côté des objets, des *références* (refs) servent de poignées humaines : `refs/heads/main` (une branche), `refs/tags/v1.0.0` (un tag), `refs/remotes/origin/main` (la dernière position connue d'une branche distante).
+> **Que veut dire « blob » et « tree » ?** Un *blob* (de l'anglais *Binary Large OBject*, « gros objet binaire ») est juste le contenu d'un fichier, sans son nom : imaginez le texte d'une page arraché de son classeur, sans intercalaire. Un *tree* (« arbre ») joue le rôle d'un dossier : il dit « dans ce dossier, il y a un fichier nommé X dont le contenu est tel blob, et un sous-dossier Y qui est tel autre tree ». L'ensemble forme une arborescence, comme l'explorateur de fichiers de votre ordinateur.
+
+À côté des objets, des *références* (en abrégé *refs*) servent de poignées lisibles par un humain, car personne ne veut retenir une empreinte de 40 caractères : `refs/heads/main` (une branche), `refs/tags/v1.0.0` (un tag), `refs/remotes/origin/main` (la dernière position connue d'une branche sur le serveur distant).
+
+```mermaid
+graph TD
+    ref["Référence : refs/heads/main"] --> commit["Commit (instantané)"]
+    commit --> parent["Commit parent"]
+    commit --> tree["Tree (le dossier racine)"]
+    tree --> blob1["Blob (contenu de fichier)"]
+    tree --> subtree["Tree (un sous-dossier)"]
+    subtree --> blob2["Blob (autre fichier)"]
+```
 
 Conséquences pratiques :
 
@@ -101,7 +119,9 @@ Conséquences pratiques :
 
 ## Configuration initiale
 
-Une configuration soignée évite des heures de débogage de fins de ligne, d'auteurs erronés ou de pulls hasardeux.
+Bien régler Git au départ évite des heures de débogage : fins de ligne incohérentes, commits attribués à la mauvaise personne, récupérations de code qui tournent mal. Les commandes ci-dessous écrivent ces réglages une fois pour toutes.
+
+> **Que veut dire « `--global` » ?** L'option `--global` applique le réglage à votre compte sur la machine, pour tous vos projets, et pas seulement au dépôt courant. C'est comme régler la langue de votre téléphone une fois, plutôt que dans chaque application. Sans `--global`, le réglage ne vaut que pour le dépôt dans lequel vous êtes.
 
 ```bash
 # Identité (obligatoire pour tout commit)
@@ -149,7 +169,11 @@ Voir aussi la section [.gitattributes](#le-fichier-gitattributes) pour aller au-
 
 ## Messages de commit
 
-Un message de commit s'adresse au futur lecteur (vous, dans six mois) qui essaie de comprendre **pourquoi** une modification a été faite. La spécification [Conventional Commits](https://www.conventionalcommits.org/fr/) impose un format machine-lisible utile pour générer des changelogs et déclencher des releases sémantiques.
+> **Que veut dire « commit » ?** Un *commit* (verbe anglais « valider, enregistrer ») est un enregistrement daté d'un état du projet : la photo dont parle l'introduction. Chaque commit garde un message, le nom de son auteur et une empreinte SHA. Faire un commit, c'est dire à Git « garde cet état, j'y reviendrai peut-être ».
+
+Un message de commit s'adresse au futur lecteur (vous, dans six mois) qui cherche à comprendre **pourquoi** une modification a été faite. La spécification [Conventional Commits](https://www.conventionalcommits.org/fr/) impose un format que les programmes savent lire, utile pour générer automatiquement des changelogs et déclencher des publications de version.
+
+> **Que veut dire « changelog » ?** Un *changelog* (« journal des changements ») est la liste, version par version, de ce qui a été ajouté, corrigé ou retiré dans un logiciel. C'est l'équivalent du carnet d'entretien d'une voiture : on y lit ce qui a changé et quand. Quand les messages de commit suivent une norme, un outil peut fabriquer ce journal tout seul.
 
 ### Format
 
@@ -168,7 +192,7 @@ Un message de commit s'adresse au futur lecteur (vous, dans six mois) qui essaie
 | `feat` | Ajout d'une fonctionnalité visible par l'utilisateur. |
 | `fix` | Correction de bug. |
 | `docs` | Documentation uniquement (README, commentaires de code, ADR). |
-| `style` | Mise en forme, espaces, points-virgules — **aucun** changement de comportement. |
+| `style` | Mise en forme, espaces, points-virgules, **aucun** changement de comportement. |
 | `refactor` | Réorganisation interne sans ajout de fonctionnalité ni correction. |
 | `perf` | Amélioration de performance mesurable. |
 | `test` | Ajout ou refonte de tests. |
@@ -177,11 +201,17 @@ Un message de commit s'adresse au futur lecteur (vous, dans six mois) qui essaie
 | `chore` | Tâche de maintenance qui ne rentre dans aucune autre case (mise à jour `.gitignore`, renommage de scripts internes, etc.). |
 | `revert` | Annulation d'un commit antérieur (le corps cite le SHA reverté). |
 
+> **Que veut dire « CI » et « intégration continue » ?** CI veut dire *Continuous Integration*, « intégration continue ». C'est un robot, hébergé chez votre plateforme (GitHub, GitLab), qui récupère chaque nouveau code et lance automatiquement les vérifications : compilation, tests, contrôle de style. Au lieu d'attendre la veille de la livraison pour découvrir que tout casse, on vérifie en continu, à chaque modification. C'est comme un contrôle qualité en bout de chaîne de montage qui inspecte chaque pièce au fur et à mesure.
+
 ### La portée (`scope`)
 
 La portée, entre parenthèses, est un nom court désignant la zone du code touchée. Elle est facultative mais fortement recommandée dès que le projet dépasse une dizaine de modules. Exemples : `feat(auth):`, `fix(panier):`, `docs(api):`, `refactor(parser):`. Elle facilite la recherche (`git log --grep "(auth)"`) et la génération de changelogs par section.
 
 ### Ruptures de compatibilité
+
+> **Que veut dire « rupture de compatibilité » ?** Une rupture de compatibilité (en anglais *breaking change*) est un changement qui oblige les utilisateurs de votre code à modifier le leur pour continuer à fonctionner. Exemple : renommer un bouton dans un menu ne casse rien, mais changer le nom d'une fonction que tout le monde appelle force chacun à mettre à jour ses appels. C'est comme changer le format d'une prise électrique : tous les appareils branchés dessus doivent s'adapter.
+
+> **Que veut dire « JWT » ?** JWT (prononcé « jot ») veut dire *JSON Web Token*, un « jeton web au format JSON ». C'est un petit laissez-passer signé que le serveur remet à un utilisateur connecté ; à chaque requête, l'utilisateur le présente pour prouver son identité, comme un bracelet d'entrée de festival qu'on montre à chaque stand.
 
 Une rupture se signale de deux manières, idéalement les deux à la fois :
 
@@ -239,7 +269,7 @@ expiration, ce qui retenait l'objet User en mémoire.
 
 - [`commitlint`](https://commitlint.js.org/) couplé à un hook `commit-msg` rejette tout message non conforme.
 - [`commitizen`](https://commitizen-tools.github.io/commitizen/) propose un assistant interactif (`cz commit`) qui guide la rédaction.
-- [`semantic-release`](https://semantic-release.gitbook.io/) lit les Conventional Commits pour calculer la prochaine version SemVer et publier automatiquement le changelog.
+- [`semantic-release`](https://semantic-release.gitbook.io/) lit les Conventional Commits pour calculer le prochain numéro de version (selon SemVer, détaillé dans la section [Tags et versionnage](#tags-et-versionnage)) et publier automatiquement le changelog.
 
 ### Limites et critiques de Conventional Commits
 
@@ -251,7 +281,7 @@ Que faire d'un commit qui :
 
 - Améliore la lisibilité d'une fonction *et* corrige un edge-case mineur ? `refactor` ou `fix` ?
 - Ajoute un test *et* corrige le bug que ce test révèle ? `test` ou `fix` ?
-- Met à jour une dépendance pour fermer une CVE ? `chore`, `fix`, `build`, `security` ?
+- Met à jour une dépendance pour fermer une CVE ? `chore`, `fix`, `build`, `security` ? (Une *CVE*, pour *Common Vulnerabilities and Exposures*, « failles et expositions répertoriées », est l'identifiant officiel d'une faille de sécurité connue publiquement, par exemple `CVE-2024-12345`.)
 - Renomme un dossier interne sans changer le comportement ? `refactor`, `chore`, `style` ?
 
 La spécification ne tranche pas ; chaque équipe arbitre, et les arbitrages divergent. Sans guide d'équipe, le type devient une loterie.
@@ -283,7 +313,7 @@ Beaucoup d'équipes oublient le `!` ou le footer `BREAKING CHANGE:`, ce qui fait
 | Contexte | Recommandation |
 |----------|----------------|
 | Bibliothèque publique avec releases automatiques (npm, PyPI) | **Oui**, indispensable. SemVer + changelog en dépend. |
-| Application interne avec changelog manuel | **Oui**, mais sans `commitlint` strict — guide d'équipe suffit. |
+| Application interne avec changelog manuel | **Oui**, mais sans `commitlint` strict : un guide d'équipe suffit. |
 | Hackathon, prototype, expérimentation courte | **Non**, friction inutile. |
 | Dépôt avec contributeurs externes occasionnels | **Oui**, mais avec assistant (commitizen) et indulgence côté mainteneurs. |
 | Mono-développeur sur projet personnel | À volonté. Bénéfice marginal sauf publication automatisée. |
@@ -298,11 +328,15 @@ Beaucoup d'équipes oublient le `!` ou le footer `BREAKING CHANGE:`, ce qui fait
 
 ## Branches et stratégie de branchement
 
-> **Définition — Branche.** Pointeur mobile vers un commit. Une branche n'est ni une copie ni une duplication : c'est une étiquette, presque gratuite, qui suit votre tête de travail.
+> **Que veut dire « branche » ?** Une branche est un pointeur mobile vers un commit, autrement dit une étiquette qui dit « le travail en cours est ici ». Ce n'est ni une copie ni un double du projet : c'est presque gratuit. Imaginez un marque-page que vous déplacez de page en page dans un livre ; la branche est ce marque-page, et avancer la branche, c'est simplement le glisser sur la photo suivante. Travailler sur une branche permet d'expérimenter sans toucher à la version de référence.
 
-Une branche isole un travail en cours du tronc stable. Trois grandes familles de stratégies se partagent l'industrie.
+Une branche isole un travail en cours du tronc stable (la branche `main`, considérée comme fiable). Trois grandes familles de stratégies se partagent les équipes.
 
 ### Comparatif des stratégies
+
+> **Que veut dire « feature flag » ?** Un *feature flag* (« interrupteur de fonctionnalité ») est un interrupteur dans le code qui permet d'activer ou de désactiver une fonctionnalité sans toucher au code lui-même. On peut ainsi livrer du code inachevé tout en le laissant éteint pour les utilisateurs, puis l'allumer le jour voulu, comme un magasin qui installe un rayon mais le garde fermé derrière un rideau jusqu'à l'inauguration.
+
+> **Que veut dire « SaaS » ?** SaaS veut dire *Software as a Service*, « logiciel en tant que service ». C'est un logiciel utilisé via Internet, mis à jour par l'éditeur sans que l'utilisateur installe quoi que ce soit (Gmail, Slack, Notion). À l'opposé d'un logiciel installé sur le poste du client, dont plusieurs versions cohabitent dans la nature.
 
 | Critère | Trunk-Based Development | GitHub Flow | Git Flow (Driessen, 2010) |
 |---------|------------------------|-------------|---------------------------|
@@ -345,6 +379,10 @@ Le nom inclut un identifiant de ticket lorsque possible : `feat/1234-paiement-st
 
 ### Cycle d'une branche feature
 
+> **Que veut dire « Pull Request » (PR) ?** Une *Pull Request* (« demande de tirage », parfois *Merge Request* sur GitLab) est une demande officielle d'intégrer votre branche dans la branche principale. Elle ouvre un espace de discussion où des collègues relisent le code, commentent et approuvent avant la fusion. C'est l'équivalent de soumettre un texte à un comité de relecture avant publication, plutôt que de le publier directement.
+
+> **Que veut dire « feature » et « hotfix » ?** Une *feature* (« fonctionnalité ») est un nouvel élément utile pour l'utilisateur. Un *hotfix* (« correctif à chaud ») est une correction urgente appliquée directement à la version en production parce qu'un problème grave est en cours, comme un pansement posé en urgence sans attendre la prochaine visite médicale.
+
 ```mermaid
 sequenceDiagram
     participant Dev as Développeur
@@ -369,9 +407,11 @@ sequenceDiagram
 
 ## Trunk-Based Development : le standard moderne
 
-> **Définition — Trunk-Based Development (TBD).** Stratégie de branchement où tous les développeurs intègrent leurs commits sur une branche unique (`main`, dite « le tronc »), au moins une fois par jour, en s'appuyant massivement sur l'intégration continue, les tests automatisés et les *feature flags* pour découpler la livraison du déploiement.
+> **Que veut dire « Trunk-Based Development » (TBD) ?** *Trunk-Based Development* veut dire « développement basé sur le tronc ». C'est une façon de travailler où tout le monde intègre son code sur une seule branche commune (`main`, le « tronc » de l'arbre), au moins une fois par jour. Pour que ce soit possible sans tout casser, on s'appuie sur l'intégration continue, des tests automatisés et des feature flags. L'image : au lieu que chacun bricole longtemps dans son atelier isolé, tout le monde rapporte ses pièces sur l'établi commun chaque jour, et un contrôle automatique vérifie que rien ne casse.
 
-TBD est aujourd'hui le modèle dominant dans les organisations qui pratiquent le déploiement continu : Google (depuis l'origine, sur un monorepo de plusieurs milliards de lignes), Meta / Facebook, Netflix, Spotify, Stripe, Shopify. Ce n'est pas un effet de mode : le rapport [State of DevOps](https://cloud.google.com/devops/state-of-devops) (Google / DORA) corrèle systématiquement TBD à des indicateurs de performance plus élevés (fréquence de déploiement, lead time, taux d'échec, MTTR).
+TBD est aujourd'hui le modèle dominant dans les organisations qui livrent en continu : Google (depuis l'origine, sur un monorepo de plusieurs milliards de lignes), Meta, Netflix, Spotify, Stripe, Shopify. Ce n'est pas une mode : le rapport [State of DevOps](https://cloud.google.com/devops/state-of-devops) (Google et DORA) associe régulièrement TBD à de meilleurs indicateurs de performance (fréquence de déploiement, lead time, taux d'échec, MTTR).
+
+> **Que veut dire « DevOps », « DORA », « lead time » et « MTTR » ?** *DevOps* est la contraction de *Development* (développement) et *Operations* (exploitation) : une culture où ceux qui écrivent le code et ceux qui le font tourner en production travaillent ensemble plutôt qu'en silos séparés. *DORA* (*DevOps Research and Assessment*) est l'équipe de recherche qui mesure ces pratiques. Le *lead time* est le délai entre « le code est écrit » et « il est en production ». Le *MTTR* (*Mean Time To Recovery*, « temps moyen de rétablissement ») est le temps qu'il faut pour réparer après une panne. Plus ces deux durées sont courtes, plus l'équipe est réactive.
 
 ### Principes de base
 
@@ -386,7 +426,16 @@ TBD est aujourd'hui le modèle dominant dans les organisations qui pratiquent le
 
 ### Feature flags : le pivot de TBD
 
-Sans feature flags, TBD est impossible : on ne peut pas merger du code à moitié écrit. Avec feature flags, on découple deux choses qui n'ont aucune raison d'être liées : *intégrer* du code (le mettre dans `main`) et *l'activer en production* (le rendre visible aux utilisateurs).
+Sans feature flags, TBD est impossible : on ne peut pas fusionner du code à moitié écrit sans risquer de casser la version visible. Avec un feature flag, on sépare deux choses qui n'ont aucune raison d'être liées : *intégrer* le code (le mettre dans `main`) et *l'activer en production* (le rendre visible aux utilisateurs).
+
+```mermaid
+flowchart LR
+    code["Code écrit sur une branche courte"] --> merge["Fusion dans main (intégré)"]
+    merge --> flagoff["Feature flag éteint : invisible pour les utilisateurs"]
+    flagoff --> test["Vérifications, tests internes"]
+    test --> flagon["Feature flag allumé progressivement : 1%, 10%, 100%"]
+    flagon --> cleanup["PR de nettoyage : on retire le flag et l'ancien code"]
+```
 
 ```javascript
 // Pseudo-code : la feature est merge mais désactivée
@@ -434,7 +483,7 @@ Voir [trunkbaseddevelopment.com](https://trunkbaseddevelopment.com/) pour une r�
 
 ## GitFlow : utile, mais souvent surdimensionné
 
-> **Définition — Git Flow.** Modèle de branchement publié par Vincent Driessen en 2010 (« A successful Git branching model »), articulé autour de cinq types de branches : `main` (production), `develop` (intégration), `feature/*`, `release/*`, `hotfix/*`.
+> **Que veut dire « Git Flow » ?** Git Flow est un modèle d'organisation des branches publié par Vincent Driessen en 2010 (« A successful Git branching model »). Il repose sur cinq types de branches aux rôles précis : `main` (la version en production), `develop` (l'intégration du travail en cours), `feature/*` (les fonctionnalités), `release/*` (la préparation d'une version) et `hotfix/*` (les correctifs urgents). C'est comme une usine avec cinq ateliers spécialisés : très structuré, mais lourd si l'usine ne produit qu'un seul article à la fois.
 
 Git Flow a été pendant une décennie le modèle de référence enseigné dans les écoles et les tutoriels. Il a influencé toute une génération de développeurs. Mais en 2020, son auteur lui-même a publié [une note rétrospective](https://nvie.com/posts/a-successful-git-branching-model/) précisant que ce modèle a été conçu pour des **logiciels versionnés livrés explicitement**, et qu'il n'est **pas adapté aux applications web déployées en continu** :
 
@@ -454,7 +503,7 @@ Git Flow a été pendant une décennie le modèle de référence enseigné dans 
 | Contexte | Symptôme typique |
 |----------|------------------|
 | SaaS web déployé en continu | `develop` s'éloigne progressivement de `main` ; les merges deviennent douloureux ; personne ne sait laquelle des deux est « la vérité ». |
-| Application mobile à déploiement OTA | Les `release/*` n'ont pas de sens : la version courante remplace la précédente. |
+| Application mobile à déploiement OTA (*Over The Air*, mise à jour automatique « par les airs », sans câble) | Les `release/*` n'ont pas de sens : la version courante remplace la précédente. |
 | Petite équipe (< 5 développeurs) | Le coût mental des cinq types de branches dépasse leur bénéfice. |
 | Pas de hotfixes fréquents en production | La branche `hotfix/*` reste vide et déroute les nouveaux arrivants. |
 
@@ -497,13 +546,17 @@ Notez la complexité : pour un seul cycle de release avec un hotfix, on traverse
 
 ## Forks vs branches partagées
 
-> **Définition — Fork.** Copie complète d'un dépôt sur le compte d'un autre utilisateur ou organisation, conservant un lien vers l'origine pour faciliter les Pull Requests entrantes.
+> **Que veut dire « fork » ?** Un *fork* (« fourche », au sens de bifurcation) est une copie complète d'un dépôt placée sur votre propre compte, qui garde un lien vers le dépôt d'origine. Cela vous laisse expérimenter librement chez vous, puis proposer vos changements au projet d'origine. L'image : photocopier un livre entier pour annoter votre exemplaire, sans droit d'écrire dans l'original, puis soumettre vos annotations à l'auteur.
 
-Le choix entre *fork* et *branche dans le dépôt principal* dépend largement du modèle de gouvernance du projet.
+> **Que veut dire « open source » ?** Un logiciel *open source* (« code source ouvert ») est un logiciel dont le code est public, que chacun peut lire, modifier et redistribuer selon une licence. N'importe qui peut donc proposer une amélioration, ce qui explique l'usage massif des forks dans ce monde.
+
+Le choix entre *fork* et *branche dans le dépôt principal* dépend surtout de la gouvernance du projet (qui a le droit d'écrire où).
 
 ### Modèle « fork » (open source, contributions externes)
 
-C'est le modèle standard sur GitHub pour les projets open source. Un contributeur extérieur n'a pas le droit d'écrire dans le dépôt principal ; il doit :
+> **Que veut dire « remote », « origin » et « upstream » ?** Un *remote* (« dépôt distant ») est une copie du dépôt hébergée ailleurs, sur un serveur. Quand vous clonez un projet, Git appelle `origin` ce serveur de départ par convention. Dans un fork, on ajoute en plus un remote nommé `upstream` (« en amont ») qui pointe vers le projet d'origine, afin de récupérer ses nouveautés. Pensez à `origin` comme votre boîte aux lettres et à `upstream` comme la maison mère dont vous suivez les annonces.
+
+C'est le modèle standard sur GitHub pour les projets open source. Un contributeur extérieur n'a pas le droit d'écrire dans le dépôt principal, il doit donc :
 
 1. Forker le dépôt sur son propre compte.
 2. Créer une branche dans son fork.
@@ -536,12 +589,12 @@ Avantages :
 - Sécurité : les contributeurs externes ne peuvent rien casser dans le dépôt principal.
 - Pas besoin d'accorder un accès en écriture à des inconnus.
 - Le contributeur a un dépôt complet à lui, peut expérimenter librement.
-- Compatible avec une politique de signature DCO ou de CLA (Contributor License Agreement).
+- Compatible avec une politique de signature DCO (*Developer Certificate of Origin*, « certificat d'origine du développeur » : une ligne ajoutée au commit qui atteste que vous avez le droit de contribuer ce code) ou de CLA (*Contributor License Agreement*, « accord de licence du contributeur » : un contrat précisant les droits cédés au projet).
 
 Inconvénients :
 
 - Synchronisation manuelle : un fork laissé sans entretien diverge.
-- Les CI complexes (avec secrets) ne tournent pas toujours sur les PR depuis un fork (par défaut, GitHub Actions limite l'accès aux secrets).
+- Les CI complexes (avec *secrets*, c'est-à-dire des mots de passe ou clés que la CI utilise) ne tournent pas toujours sur les PR venant d'un fork : par défaut, GitHub Actions cache ces secrets aux contributeurs externes, pour éviter qu'un inconnu ne les vole.
 - Légèrement plus lourd à expliquer aux nouveaux contributeurs.
 
 ### Modèle « branches partagées » (équipe interne)
@@ -560,7 +613,7 @@ L'accès en écriture est restreint par les protections de branche : on ne peut 
 | Critère | Forks | Branches partagées |
 |---------|-------|---------------------|
 | Public cible | OSS, contributeurs externes, hackathons | Équipes internes |
-| Sécurité | Forte (pas d'accès en écriture amont) | Repose sur les ACL et protections de branche |
+| Sécurité | Forte (pas d'accès en écriture amont) | Repose sur les ACL (*Access Control Lists*, « listes de contrôle d'accès » : les droits qui disent qui peut faire quoi) et les protections de branche |
 | Friction quotidienne | Moyenne (synchronisation à gérer) | Faible |
 | CI sur PR | Restreinte sur les forks (secrets cachés par défaut) | Pleine |
 | Découvrabilité | Toutes les PR sont au même endroit (côté GitHub) | Idem |
@@ -573,20 +626,24 @@ Certaines grandes organisations utilisent des forks internes (dans la même orga
 
 ## Monorepo vs polyrepo
 
-> **Définition — Monorepo.** Un seul dépôt Git regroupe l'ensemble du code d'une organisation (ou d'un produit) : applications, bibliothèques, outils, infra. Exemples célèbres : Google, Meta, Microsoft (Windows), Twitter (avant 2023).
+> **Que veut dire « monorepo » ?** Un *monorepo* (« mono-dépôt ») est un seul dépôt Git qui regroupe tout le code d'une organisation : toutes les applications, bibliothèques, outils et fichiers d'infrastructure au même endroit. C'est la grande bibliothèque centrale où tous les livres sont rangés sur les mêmes étagères. Google, Meta et Microsoft (pour Windows) fonctionnent ainsi.
 >
-> **Définition — Polyrepo.** Chaque service, bibliothèque ou application a son propre dépôt Git, versionné et déployé indépendamment.
+> **Que veut dire « polyrepo » ?** Un *polyrepo* (« multi-dépôts ») est l'inverse : chaque service, bibliothèque ou application vit dans son propre dépôt Git, avec sa version et son déploiement à lui. Ce sont autant de petites bibliothèques de quartier, chacune autonome.
 
-Le débat est aussi vieux que les organisations qui dépassent une dizaine de développeurs. Aucun des deux modèles n'est universellement supérieur ; chacun déplace les problèmes plutôt que de les supprimer.
+Le débat est aussi vieux que les organisations de plus d'une dizaine de développeurs. Aucun des deux modèles n'est supérieur dans l'absolu : chacun déplace les difficultés plutôt que de les faire disparaître.
 
 ### Comparatif
+
+> **Que veut dire « CI/CD » ?** On a vu *CI* (intégration continue). *CD* veut dire *Continuous Delivery/Deployment*, « livraison ou déploiement continu » : prolonger l'automatisation jusqu'à la mise en production, pour qu'un code validé parte chez les utilisateurs sans étape manuelle. CI vérifie, CD livre.
+
+> **Que veut dire « refactoring » ?** Un *refactoring* (« remaniement ») consiste à réorganiser le code pour le rendre plus clair ou plus simple, sans changer ce qu'il fait pour l'utilisateur. C'est comme ranger une cuisine : les plats sortis restent les mêmes, mais on retrouve les ustensiles plus vite.
 
 | Critère | Monorepo | Polyrepo |
 |---------|----------|----------|
 | Refactoring transverse (renommer une API utilisée partout) | Trivial : un seul commit atomique. | Pénible : N PRs coordonnées dans N dépôts, plus la gestion des versions. |
 | Découverte de code | Navigation et recherche unifiées. | Multi-dépôts, multi-IDE, fragmenté. |
 | CI / CD | Outils sophistiqués nécessaires (Bazel, Nx, Turborepo) pour ne builder que ce qui change. | CI standard par dépôt, plus simple à mettre en place. |
-| Permissions par module | Difficile (Git ne sait pas restreindre un sous-répertoire ; CODEOWNERS partiellement). | Native (un dépôt = un ensemble de droits). |
+| Permissions par module | Difficile (Git ne sait pas restreindre un sous-répertoire ; le fichier CODEOWNERS, qui désigne des responsables par dossier, n'y répond qu'en partie). | Native (un dépôt = un ensemble de droits). |
 | Charge sur Git | Croissante avec la taille (10+ Go, 100k+ fichiers). Demande LFS, partial clone, sparse checkout. | Faible : chaque dépôt reste de taille raisonnable. |
 | Couplage entre composants | Tendance à se renforcer (« on est ensemble dans le repo »). | Plus distant, force les contrats d'interface. |
 | Versionnement | Une seule version, partagée. | Chaque dépôt a sa propre version (et ses propres tags). |
@@ -618,15 +675,19 @@ Le débat est aussi vieux que les organisations qui dépassent une dizaine de d�
 
 ### Cas intermédiaire : « metarepo »
 
-Un dépôt parent référence plusieurs sous-dépôts via *git submodules* ou *git subtree*. C'est rarement satisfaisant : les submodules ont une réputation mitigée (synchronisation, états détachés, expérience utilisateur déroutante). À considérer uniquement pour des cas très spécifiques (vendoring d'une dépendance modifiée, projet client + livrables figés).
+Un dépôt parent référence plusieurs sous-dépôts via *git submodules* ou *git subtree*.
+
+> **Que veut dire « submodule », « subtree » et « vendoring » ?** Un *submodule* (« sous-module ») est un dépôt Git imbriqué dans un autre, dont seul un pointeur de version est enregistré dans le parent. Un *subtree* (« sous-arbre ») copie carrément le code d'un autre dépôt dans un sous-dossier du vôtre. Le *vendoring* est le fait de copier une dépendance externe directement dans votre dépôt pour la figer et la maîtriser, au lieu de la télécharger à chaque fois.
+
+C'est rarement satisfaisant : les submodules ont une réputation mitigée (synchronisation fastidieuse, états détachés, expérience déroutante). À réserver à des cas très précis (vendoring d'une dépendance que vous avez modifiée, projet client avec livrables figés).
 
 [Retour en haut de page](#table-des-matières)
 
 ## Gestion des conflits
 
-> **Définition — Three-way merge.** Algorithme de fusion utilisé par Git lorsque deux branches ont divergé : il compare la base commune (ancêtre le plus récent) à chacune des deux versions et combine les changements. Si les deux côtés ont modifié la même zone, il y a *conflit*.
+> **Que veut dire « three-way merge » ?** *Three-way merge* veut dire « fusion à trois points ». Quand deux branches ont évolué chacune de leur côté, Git regarde trois versions du fichier : leur ancêtre commun (le point de départ), la version A et la version B. En comparant chaque version au départ, il devine quoi garder. Si les deux côtés ont modifié exactement la même ligne, il ne peut pas deviner, et c'est un *conflit*. L'image : deux personnes corrigent la même phrase d'un brouillon partagé ; tant qu'elles touchent des phrases différentes, on combine sans problème, mais si elles réécrivent la même phrase différemment, il faut trancher à la main.
 
-Un conflit survient quand deux commits modifient la même portion d'un fichier sans qu'une fusion automatique soit possible. Git ne décide pas à votre place ; il marque les zones concernées et attend une résolution manuelle.
+Un conflit survient donc quand deux commits modifient la même portion d'un fichier sans qu'une fusion automatique soit possible. Git ne décide pas à votre place : il marque les zones concernées et attend que vous choisissiez.
 
 ### Anatomie d'un conflit
 
@@ -685,19 +746,19 @@ Git mémorise alors la résolution et la rejoue automatiquement si le même conf
 
 ## Rebase, merge ou squash : trois stratégies de fusion
 
-> **Définition — Merge.** Création d'un commit de fusion (deux parents) qui réconcilie deux branches divergentes.
->
-> **Définition — Rebase.** Réécriture de la branche courante : Git détache temporairement vos commits, déplace la base de la branche au sommet d'une autre, puis rejoue vos commits un par un. Les SHA changent.
->
-> **Définition — Fast-forward.** Cas particulier où la branche cible n'a pas divergé : Git avance simplement le pointeur sans créer de commit de fusion.
->
-> **Définition — Squash merge.** Mode d'intégration de PR qui fond tous les commits de la branche source en un commit unique posé au sommet de la cible.
+> **Que veut dire « merge » (fusion) ?** Un *merge* crée un commit spécial à deux parents qui réunit deux branches ayant divergé. C'est comme nouer ensemble deux fils qui s'étaient séparés : le nœud (le commit de fusion) garde la trace des deux chemins.
 
-Les opérations intègrent les commits d'une branche dans une autre, mais ne produisent pas le même historique.
+> **Que veut dire « rebase » ?** Un *rebase* (« rebasage ») réécrit votre branche : Git met vos commits de côté, déplace le point de départ de la branche au sommet d'une autre, puis rejoue vos commits un par un par-dessus. Comme les commits sont recréés, ils reçoivent de nouvelles empreintes SHA. L'image : recopier vos notes au propre à partir d'une nouvelle page de référence, plutôt que de coller un nœud entre deux versions.
+
+> **Que veut dire « fast-forward » ?** Un *fast-forward* (« avance rapide ») arrive quand la branche d'arrivée n'a pas bougé depuis que vous l'avez quittée : Git n'a rien à réconcilier, il fait juste glisser le marque-page en avant, sans créer de commit de fusion. Comme avancer la lecture d'une vidéo sans rien monter.
+
+> **Que veut dire « squash merge » ?** Un *squash merge* (« fusion par écrasement ») fond tous les commits d'une branche en un seul commit propre posé sur la branche d'arrivée. C'est résumer dix brouillons successifs en une seule version finale avant de la classer.
+
+Ces opérations intègrent toutes les commits d'une branche dans une autre, mais elles ne produisent pas le même historique.
 
 ### Visualisation
 
-État de départ — `feat/x` a divergé de `main` :
+État de départ, la branche `feat/x` a divergé de `main` :
 
 ```text
 A---B---C  main
@@ -741,7 +802,7 @@ Concrètement : on rebase une branche feature sur `main` pour la garder propre, 
 
 ### Pourquoi « ne jamais rebaser un commit publié »
 
-Si vos collègues ont fondé du travail sur les anciens commits `D`, `E`, `F` et que vous publiez `D'`, `E'`, `F'`, leur historique local référencera des commits qui ont disparu côté distant. Au prochain pull, Git ne saura pas réconcilier les deux historiques et créera une fusion involontaire — ou pire, écrasera leurs commits si quelqu'un fait `git push --force`. Sur une branche partagée, **toujours** préférer `merge`.
+Si vos collègues ont fondé du travail sur les anciens commits `D`, `E`, `F` et que vous publiez `D'`, `E'`, `F'`, leur historique local référencera des commits qui ont disparu côté distant. Au prochain pull, Git ne saura pas réconcilier les deux historiques et créera une fusion involontaire, ou pire, écrasera leurs commits si quelqu'un fait `git push --force`. Sur une branche partagée, **toujours** préférer `merge`.
 
 ### Exemple complet
 
@@ -825,6 +886,17 @@ Inconvénients :
 
 #### Recommandation pratique
 
+```mermaid
+flowchart TD
+    start["Quel mode d'intégration de PR ?"] --> q1{"PR petite et exploratoire ?"}
+    q1 -- Oui --> squash["Squash and merge : un seul commit propre"]
+    q1 -- Non --> q2{"Chaque commit est soigné et testable ?"}
+    q2 -- Oui --> rebase["Rebase and merge : historique linéaire détaillé"]
+    q2 -- Non --> q3{"Audit ou traçabilité maximale exigée ?"}
+    q3 -- Oui --> mergecommit["Create a merge commit : tous les SHA préservés"]
+    q3 -- Non --> squash
+```
+
 | Type de PR | Mode recommandé |
 |------------|-----------------|
 | Petite PR (< 200 lignes), peu de commits, exploratoire | **Squash and merge**. |
@@ -839,9 +911,17 @@ Beaucoup d'équipes choisissent **squash par défaut** mais permettent **rebase*
 
 ## Stacked PRs : la revue par couches
 
-> **Définition — Stacked PRs.** Pratique consistant à découper une grosse modification en une pile de petites PR dépendantes les unes des autres, chacune basée sur la précédente, plutôt qu'une seule PR géante.
+> **Que veut dire « stacked PRs » ?** *Stacked PRs* veut dire « PR empilées ». Au lieu d'une seule énorme demande de fusion difficile à relire, on découpe le travail en plusieurs petites PR posées l'une sur l'autre, chacune construite à partir de la précédente. C'est comme servir un repas en plusieurs petits plats à goûter un par un, plutôt qu'un plat unique trop copieux que personne n'a le courage d'attaquer.
 
-Le *stacked PRs* est devenu populaire dans les équipes qui valorisent les PR petites mais qui veulent toujours pouvoir livrer des fonctionnalités cohérentes. L'approche est popularisée par les outils [Graphite](https://graphite.dev/), [Sapling](https://sapling-scm.com/) (Meta), [Stacked](https://github.com/stacked-pulls), [git-spice](https://abhinav.github.io/git-spice/) et le système interne de Phabricator.
+```mermaid
+flowchart TD
+    main["main"] --> pr1["PR1 : extract Pricing service (50 lignes)"]
+    pr1 --> pr2["PR2 : add discount strategy (80 lignes)"]
+    pr2 --> pr3["PR3 : wire up coupon UI (120 lignes)"]
+    pr3 --> pr4["PR4 : integration tests (60 lignes)"]
+```
+
+Les *stacked PRs* sont devenues populaires dans les équipes qui veulent des PR petites tout en livrant des fonctionnalités cohérentes. L'approche est popularisée par les outils [Graphite](https://graphite.dev/), [Sapling](https://sapling-scm.com/) (Meta), [Stacked](https://github.com/stacked-pulls), [git-spice](https://abhinav.github.io/git-spice/) et le système interne de Phabricator.
 
 ### Le problème que ça résout
 
@@ -936,9 +1016,9 @@ Si le revieweur demande un changement sur la base, on l'applique localement, pui
 
 ## Tags et versionnage
 
-> **Définition — Tag.** Étiquette pointant sur un commit, immuable par convention. Deux variantes : *léger* (alias de SHA) et *annoté* (objet Git complet, signable).
+> **Que veut dire « tag » ?** Un *tag* (« étiquette ») marque un commit précis avec un nom mémorable, typiquement un numéro de version comme `v1.4.0`. Par convention, une fois posé il ne bouge plus. C'est le marque-page permanent que l'on colle sur la page « version livrée au public », pour la retrouver instantanément des mois plus tard. Il en existe deux sortes : le tag *léger* (un simple raccourci vers une empreinte SHA) et le tag *annoté* (un vrai objet Git qui porte un auteur, une date, un message et peut être signé).
 
-Un tag sert à marquer une version publiée afin de pouvoir la retrouver, la comparer ou la rejouer.
+Un tag sert à marquer une version publiée pour la retrouver, la comparer ou la reconstruire plus tard.
 
 ### Tags annotés vs légers
 
@@ -953,6 +1033,8 @@ git tag v1.4.0
 Préférez **toujours** les tags annotés pour les releases publiques : ils portent une signature et un message, et `git describe` ne fonctionne correctement qu'avec eux.
 
 ### SemVer
+
+> **Que veut dire « SemVer » ?** SemVer veut dire *Semantic Versioning*, « versionnage sémantique ». C'est une convention pour numéroter les versions sous la forme `MAJEUR.MINEUR.CORRECTIF` (par exemple `2.4.1`), où chaque nombre a une signification précise. Au lieu d'un numéro choisi au hasard, le numéro raconte ce qui a changé : ainsi, en lisant `1.4.0 → 2.0.0`, un utilisateur sait immédiatement qu'il y a une rupture de compatibilité.
 
 [Semantic Versioning](https://semver.org/lang/fr/) impose le format `MAJEUR.MINEUR.CORRECTIF` :
 
@@ -983,9 +1065,11 @@ git push origin :refs/tags/v1.4.0  # distant
 
 ## Commits et tags signés
 
-> **Définition — Commit signé.** Commit accompagné d'une signature cryptographique (GPG, SSH ou S/MIME) qui prouve que l'auteur déclaré est bien celui qui a créé le commit.
+> **Que veut dire « commit signé » ?** Un *commit signé* porte une signature cryptographique qui prouve que l'auteur affiché est bien celui qui a créé le commit. Sans elle, le nom de l'auteur n'est qu'une déclaration que personne ne vérifie. La signature est comme un sceau de cire ou une signature manuscrite officielle : elle garantit l'identité et que rien n'a été modifié après coup.
 
-Sans signature, le champ `author` d'un commit est purement déclaratif : n'importe qui peut écrire `Linus Torvalds <torvalds@linux-foundation.org>`. Pour les projets sensibles (sécurité, supply chain), GitHub et GitLab affichent un badge « Verified » uniquement sur les commits signés et dont la clé publique est enregistrée sur le compte.
+> **Que veut dire « GPG », « SSH », « clé publique » et « clé privée » ?** Ces outils reposent sur la *cryptographie à clés*, qui fonctionne par paire : une *clé privée* que vous gardez secrète et une *clé publique* que vous distribuez. Ce que vous signez avec la privée peut être vérifié par tout le monde grâce à la publique, sans jamais révéler la privée, comme une serrure (publique) que seule votre clé (privée) ouvre. *GPG* (*GNU Privacy Guard*) et *SSH* (*Secure Shell*) sont deux logiciels qui gèrent ces paires de clés ; *S/MIME* est une troisième méthode, basée sur des certificats.
+
+Sans signature, le champ `author` d'un commit est purement déclaratif : n'importe qui peut écrire `Linus Torvalds <torvalds@linux-foundation.org>`. Pour les projets sensibles (sécurité, *supply chain*, c'est-à-dire la chaîne d'approvisionnement logicielle : toutes les briques externes dont dépend un produit), GitHub et GitLab affichent un badge « Verified » uniquement sur les commits signés dont la clé publique est enregistrée sur le compte.
 
 ### Signature SSH (recommandée depuis Git 2.34)
 
@@ -1034,13 +1118,13 @@ git verify-tag    v1.4.0
 
 - Activer la règle « Require signed commits » sur la branche `main` pour les projets critiques.
 - Documenter dans le README la procédure de génération et d'enregistrement de la clé.
-- Ne jamais commiter une clé privée — voir la section [Fichiers sensibles](#fichiers-sensibles).
+- Ne jamais commiter une clé privée (voir la section [Fichiers sensibles](#fichiers-sensibles)).
 
 [Retour en haut de page](#table-des-matières)
 
 ## Squash
 
-> **Définition — Squash.** Fusion de plusieurs commits en un seul. Utile pour transformer une suite de commits exploratoires (« WIP », « fix typo », « ça marche enfin ») en un commit unique racontant proprement la fonctionnalité.
+> **Que veut dire « squash » ?** *Squash* (« écraser, aplatir ») consiste à fondre plusieurs commits en un seul. Pendant le développement, on accumule souvent des commits de tâtonnement (« WIP » pour *Work In Progress*, « travail en cours », « fix typo », « ça marche enfin ») ; les écraser produit un commit unique et lisible qui raconte proprement la fonctionnalité. C'est passer de dix brouillons griffonnés à une seule page recopiée au propre.
 
 ### Squash interactif local
 
@@ -1115,7 +1199,9 @@ Pour purger un fichier de tout l'historique, renommer un auteur sur cent commits
 
 ## Cherry-pick, revert, reset : choisir le bon outil
 
-> **Définition — Cherry-pick.** Réapplication d'un commit isolé sur la branche courante, créant un nouveau commit avec le même contenu et un nouveau SHA.
+> **Que veut dire « cherry-pick » ?** *Cherry-pick* (« cueillir la cerise ») consiste à prendre un seul commit, où qu'il soit, et à le rejouer sur la branche courante. Git recrée un commit au contenu identique mais avec une nouvelle empreinte SHA. Image : aller piocher une seule recette précise dans le carnet d'un collègue pour la recopier dans le vôtre, sans emporter tout le carnet.
+
+> **Que veut dire « backporter » ?** *Backporter* (« reporter en arrière ») signifie appliquer une correction faite sur une version récente à une version plus ancienne encore utilisée. Par exemple, corriger un bug sur la version 2.0 puis reporter ce même correctif sur la 1.4 qu'un client n'a pas encore quittée.
 
 ### `git cherry-pick`
 
@@ -1145,11 +1231,13 @@ C'est la méthode standard pour défaire un commit déjà poussé sur `main`.
 
 ### `git reset` : trois modes
 
+> **Que veut dire « index » (ou *staging area*) et « répertoire de travail » ?** Git distingue trois zones. Le *répertoire de travail* (en anglais *working tree*) est l'ensemble des fichiers tels que vous les éditez sur le disque. L'*index* (aussi appelé *staging area*, « zone de préparation ») est un sas intermédiaire où vous placez ce qui partira au prochain commit, via `git add`. Le *commit* est l'enregistrement final. Image : le répertoire de travail est votre bureau en désordre, l'index est le carton dans lequel vous rangez ce que vous voulez expédier, et le commit est le colis posté.
+
 | Mode | Effet sur HEAD | Effet sur l'index | Effet sur le répertoire de travail |
 |------|----------------|-------------------|-----------------------------------|
 | `--soft` | Déplacé | Inchangé (les modifs restent staged) | Inchangé |
 | `--mixed` (défaut) | Déplacé | Réinitialisé (les modifs deviennent unstaged) | Inchangé |
-| `--hard` | Déplacé | Réinitialisé | **Réinitialisé — modifications perdues** |
+| `--hard` | Déplacé | Réinitialisé | **Réinitialisé : modifications perdues** |
 
 ```bash
 git reset --soft HEAD~1     # défaire le dernier commit, garder les modifs staged
@@ -1163,7 +1251,7 @@ git reset --hard HEAD~1     # défaire le dernier commit ET les modifs (DANGEREU
 
 ## Stash : mettre de côté du travail en cours
 
-> **Définition — Stash.** Pile de modifications temporairement mises de côté pour libérer le répertoire de travail (par exemple pour basculer rapidement sur une autre branche).
+> **Que veut dire « stash » ?** Un *stash* (« réserve, planque ») est un tiroir où Git range temporairement vos modifications en cours pour vous rendre un répertoire de travail propre, par exemple le temps de basculer en urgence sur une autre branche. Vous rangez vos affaires dans le tiroir, vous traitez l'urgence, puis vous ressortez vos affaires intactes. Le mot *pile* désigne ici une organisation « dernier rangé, premier ressorti », comme une pile d'assiettes.
 
 ```bash
 git stash push -m "WIP refactor du parser"   # stocker les modifs courantes
@@ -1181,13 +1269,13 @@ Pour stocker aussi les fichiers non suivis :
 git stash push -u -m "WIP avec nouveaux fichiers"
 ```
 
-Garde-fou : un stash est local et n'est pas poussé. Ne pas l'utiliser comme stockage longue durée — préférer un commit `wip` sur une branche feature, qui pourra être squashé plus tard.
+Garde-fou : un stash est local et n'est pas poussé sur le serveur. Ne l'utilisez pas comme stockage de longue durée : préférez un commit `wip` sur une branche feature, qui pourra être squashé plus tard.
 
 [Retour en haut de page](#table-des-matières)
 
 ## Worktree : plusieurs checkouts en parallèle
 
-> **Définition — Worktree.** Mécanisme natif de Git permettant d'avoir plusieurs répertoires de travail (checkouts) attachés à un même dépôt, chacun positionné sur une branche différente, sans recloner.
+> **Que veut dire « worktree » et « checkout » ?** Un *checkout* (« extraction ») est l'action de matérialiser une branche ou un commit donné dans vos fichiers sur le disque. Un *worktree* (« arbre de travail ») est un dossier supplémentaire rattaché au même dépôt, positionné sur une autre branche, sans recopier toute l'histoire. Vous obtenez ainsi deux bureaux de travail côte à côte qui partagent le même classeur d'archives, par exemple un pour votre fonctionnalité et un pour un correctif urgent.
 
 `git worktree` est l'une des fonctionnalités les plus sous-utilisées de Git. Elle remplace avantageusement la danse classique `stash → switch → travail → switch → stash pop` lorsqu'une interruption survient.
 
@@ -1247,7 +1335,7 @@ git worktree prune
 
 ## Bisect : retrouver le commit fautif
 
-> **Définition — Bisect.** Recherche dichotomique du commit qui a introduit une régression : Git divise par deux à chaque étape la plage de commits suspects, en se basant sur vos verdicts « bon » / « mauvais ».
+> **Que veut dire « bisect », « recherche dichotomique » et « régression » ?** Une *régression* est un bug qui réapparaît, ou plus largement une fonctionnalité qui marchait et qui s'est cassée. *Bisect* (« couper en deux ») applique une *recherche dichotomique* : à chaque étape, on coupe en deux la liste des commits suspects et on teste le commit du milieu, ce qui élimine la moitié des candidats d'un coup. C'est la méthode du jeu « plus ou moins » : pour deviner un nombre entre 1 et 1000, on propose 500, on apprend si c'est au-dessus ou en dessous, et on recommence. Au lieu de tester 1024 commits un par un, on trouve le coupable en une dizaine d'essais.
 
 Sur une plage de 1024 commits, `git bisect` trouve le coupable en 10 étapes au lieu de 1024.
 
@@ -1278,7 +1366,7 @@ Git exécute le test à chaque étape et conclut tout seul. C'est l'argument mas
 
 Scénario : la fonction `calculerTotal()` retourne le mauvais montant depuis la version 1.5.0, alors qu'elle était correcte en 1.4.0. Plusieurs centaines de commits séparent les deux versions.
 
-#### Étape 1 — Écrire un test reproducteur minimal
+#### Étape 1 : écrire un test reproducteur minimal
 
 On crée un script `scripts/bisect-test.sh` :
 
@@ -1308,7 +1396,7 @@ fi
 
 Important : le code 125 indique à `bisect` que le commit n'est pas testable (build cassé indépendant) et qu'il doit l'ignorer plutôt que de le marquer mauvais. C'est ce qui sauve la session si vous tombez sur un commit intermédiaire qui ne compile pas.
 
-#### Étape 2 — Lancer la chasse
+#### Étape 2 : lancer la chasse
 
 ```bash
 chmod +x scripts/bisect-test.sh
@@ -1324,7 +1412,7 @@ git bisect run scripts/bisect-test.sh
 
 Sur 512 commits suspects, Git effectue 9 itérations (log2(512) = 9). Chaque itération checkout un commit, exécute le script, lit le code de retour, choisit la moitié à explorer.
 
-#### Étape 3 — Lire le verdict
+#### Étape 3 : lire le verdict
 
 ```text
 9c4f7e1 is the first bad commit
@@ -1344,7 +1432,7 @@ Git nomme le commit fautif. On termine la session :
 git bisect reset
 ```
 
-#### Étape 4 — Astuces avancées
+#### Étape 4 : astuces avancées
 
 ```bash
 # Sauter un commit qu'on sait défectueux pour une raison non liée
@@ -1380,9 +1468,9 @@ L'efficacité de `bisect run` repose sur trois conditions :
 
 ## Reflog : la machine à remonter le temps
 
-> **Définition — Reflog.** Journal local des mouvements de `HEAD` et de chaque branche. Conservé environ 90 jours, il permet de retrouver des commits qui ne sont plus pointés par aucune branche (« dangling commits »).
->
-> **Définition — Dangling commit.** Commit orphelin, plus accessible par aucune référence ; en sursis avant garbage collection (`git gc`).
+> **Que veut dire « reflog » ?** Le *reflog* (contraction de *reference log*, « journal des références ») est un carnet de bord local où Git note chaque déplacement de `HEAD` et de vos branches : chaque commit, reset, rebase, changement de branche. Conservé environ 90 jours, il permet de retrouver un commit même si plus aucune branche ne pointe dessus. C'est la boîte noire de l'avion : même après un crash, elle garde la trace de tout ce qui s'est passé.
+
+> **Que veut dire « dangling commit » et « garbage collection » ?** Un *dangling commit* (« commit pendant, orphelin ») est un commit que plus aucune branche ni aucun tag ne désigne ; il flotte sans attache. La *garbage collection* (« ramassage des ordures », commande `git gc`) est le ménage automatique qui finit par supprimer ces objets devenus inaccessibles pour libérer de l'espace, un peu comme la corbeille de votre système qui se vide au bout d'un moment.
 
 Le reflog est la bouée de sauvetage en cas de manipulation hasardeuse (`reset --hard`, `rebase` cassé, branche supprimée par erreur).
 
@@ -1483,11 +1571,13 @@ Le coût en stockage est négligeable sauf sur des dépôts immenses.
 
 ## Internes Git : objets, refs, packfiles
 
-Comprendre les internes de Git est rarement nécessaire au quotidien, mais devient déterminant dès qu'il faut diagnostiquer un dépôt qui « rame », un push qui n'aboutit pas, ou une maintenance d'urgence.
+Connaître la mécanique interne de Git n'est presque jamais utile au quotidien, mais devient précieux dès qu'il faut diagnostiquer un dépôt qui « rame » (devient lent), un push qui n'aboutit pas ou une maintenance d'urgence.
 
 ### La base d'objets
 
-Tous les objets Git vivent sous `.git/objects/`. Chaque objet est compressé en zlib, identifié par le SHA-1 (ou SHA-256) de son contenu, et stocké dans un fichier dont le chemin est construit à partir des deux premiers caractères du SHA :
+Tous les objets Git vivent sous `.git/objects/`. Chaque objet est compressé avec zlib, identifié par le SHA-1 (ou SHA-256) de son contenu, et rangé dans un fichier dont le chemin reprend les deux premiers caractères de l'empreinte :
+
+> **Que veut dire « zlib » ?** zlib est une bibliothèque de compression de données très répandue. Compresser, c'est réduire la taille d'un fichier en éliminant les redondances, comme on tasse des vêtements dans une valise sous vide. Git compresse chaque objet pour économiser de l'espace disque.
 
 ```text
 .git/objects/3e/1f7c2a91d3b4...   <- contenu zlib
@@ -1538,7 +1628,9 @@ Pour économiser de l'espace, Git regroupe parfois ces fichiers dans `.git/packe
 
 ### Les packfiles
 
-Stocker chaque objet dans un fichier individuel devient inefficace pour des dépôts de centaines de milliers d'objets. Git regroupe alors les objets dans des *packfiles* (`.git/objects/pack/pack-*.pack`), avec un index (`.idx`) pour la recherche rapide. Les versions successives d'un même fichier sont stockées en *delta* (différence binaire), ce qui économise drastiquement la place.
+Stocker chaque objet dans son propre fichier devient inefficace quand un dépôt en compte des centaines de milliers. Git regroupe alors les objets dans des *packfiles* (`.git/objects/pack/pack-*.pack`), accompagnés d'un index (`.idx`) pour les retrouver vite.
+
+> **Que veut dire « packfile » et « delta » ?** Un *packfile* (« fichier compacté ») est un gros fichier qui rassemble des milliers d'objets, plus économe que des milliers de petits fichiers. À l'intérieur, les versions successives d'un même fichier ne sont pas recopiées en entier : Git ne garde qu'un *delta*, c'est-à-dire la différence d'une version à la suivante. Plutôt que de réimprimer tout un livre à chaque correction, on ne note que les pages modifiées.
 
 ```bash
 # Forcer un packing
@@ -1584,7 +1676,7 @@ Les équipes modernes manipulent des monorepos de 10, 50 voire plusieurs centain
 
 ### Git LFS : déporter les gros binaires
 
-> **Définition — Git LFS (Large File Storage).** Extension de Git qui remplace les gros fichiers binaires (images, vidéos, modèles ML, exécutables) par un *pointeur texte* dans le dépôt Git, le contenu réel étant stocké séparément sur un serveur LFS.
+> **Que veut dire « Git LFS » ?** LFS veut dire *Large File Storage*, « stockage de gros fichiers ». C'est une extension de Git qui, au lieu de mettre un gros fichier binaire (image, vidéo, modèle d'apprentissage automatique, exécutable) dans le dépôt, n'y range qu'un petit *pointeur texte* indiquant où trouver le vrai fichier sur un serveur dédié. C'est le principe d'un vestiaire : vous gardez le ticket (le pointeur) dans votre poche, et le gros manteau (le binaire) reste à part. *Binaire* désigne ici un fichier non textuel, illisible à l'œil, comme une photo ou une vidéo.
 
 Sans LFS, chaque modification d'un gros binaire est stockée en delta dans la base d'objets : un dépôt avec 100 versions d'une vidéo de 500 Mo finit à 50 Go. Avec LFS, le binaire actuel pèse seulement son poids réel, et l'historique pointe vers les versions distantes.
 
@@ -1618,7 +1710,7 @@ Le dépôt Git ne contient qu'un pointeur texte (~130 octets) ; le binaire vit s
 
 ### Partial clone : ne télécharger que ce qu'on lit
 
-> **Définition — Partial clone.** Clone qui omet certains objets (typiquement les blobs) lors de la récupération initiale, et les télécharge à la demande au moment du checkout ou de la lecture.
+> **Que veut dire « clone » et « partial clone » ?** *Cloner* un dépôt, c'est en télécharger une copie complète sur votre machine. Un *partial clone* (« clone partiel ») télécharge seulement une partie au départ (souvent l'histoire et les dossiers, mais pas le contenu de tous les fichiers) et récupère le reste au fur et à mesure que vous en avez besoin. C'est comme commander un meuble livré d'abord en kit léger, les pièces lourdes n'arrivant qu'au moment où vous les montez.
 
 ```bash
 # Clone sans aucun blob (les arbres et commits sont là, le contenu des fichiers vient au checkout)
@@ -1635,7 +1727,7 @@ Au premier `git checkout` sur une branche, Git récupère à la volée les blobs
 
 ### Sparse checkout : ne déployer qu'une partie de l'arbre
 
-> **Définition — Sparse checkout.** Mécanisme qui restreint le contenu *matérialisé* dans le répertoire de travail à un sous-ensemble du dépôt, tout en gardant l'historique complet.
+> **Que veut dire « sparse checkout » ?** *Sparse checkout* veut dire « extraction partielle » (*sparse* = « clairsemé »). Ce mécanisme ne fait apparaître sur votre disque qu'une partie choisie des dossiers du dépôt, tout en gardant l'historique complet. Sur un monorepo géant, vous ne déballez que les rayons qui vous concernent, même si l'entrepôt entier reste accessible.
 
 Combiné avec un partial clone, on obtient l'expérience d'un dépôt léger sur disque malgré une histoire massive en amont.
 
@@ -1672,7 +1764,7 @@ Résultat : sur disque, seuls les répertoires nécessaires sont déployés. L'h
 
 | Stratégie | Utile pour |
 |-----------|-----------|
-| `git clone --depth=1` (shallow clone) | CI, déploiements, agents qui n'ont pas besoin de l'historique. |
+| `git clone --depth=1` (*shallow clone*, « clone superficiel » : ne récupère que le dernier commit, sans l'historique passé) | CI, déploiements, agents qui n'ont pas besoin de l'historique. |
 | `git fetch --filter=blob:none` | Réduire la bande passante des fetchs incrémentaux. |
 | Submodules | À éviter sauf besoin précis : expérience utilisateur déroutante. |
 | Subtree | Vendoring d'une dépendance externe : alternative aux submodules, sans état détaché. |
@@ -1682,14 +1774,16 @@ Résultat : sur disque, seuls les répertoires nécessaires sont déployés. L'h
 
 ## Fichiers sensibles
 
-Mots de passe, clés d'API, certificats, fichiers `.env` : tout secret commité reste dans l'historique pour toujours, **même après suppression**. Une fois publié, considérez le secret comme compromis et faites-le tourner immédiatement.
+> **Que veut dire « secret », « clé d'API » et « faire tourner un secret » ?** Un *secret* est une information confidentielle qui donne un accès : mot de passe, certificat, jeton. Une *clé d'API* (*Application Programming Interface*, « interface de programmation ») est un identifiant secret qui autorise votre programme à utiliser un service externe (paiement, envoi d'e-mails). *Faire tourner* un secret (en anglais *rotate*), c'est le révoquer et en générer un nouveau, exactement comme on change une serrure dont la clé a été copiée.
+
+Mots de passe, clés d'API, certificats, fichiers `.env` (où l'on range les variables d'environnement, souvent sensibles) : tout secret enregistré dans un commit reste dans l'historique pour toujours, **même après suppression du fichier**. Une fois publié, considérez le secret comme compromis et faites-le tourner immédiatement, car n'importe qui ayant cloné le dépôt en garde une copie.
 
 ### Prévenir
 
 | Pratique | Outils |
 |----------|--------|
 | `.gitignore` complet dès l'init du dépôt | [gitignore.io](https://www.toptal.com/developers/gitignore) |
-| Gabarits sans valeurs (`.env.example`) | — |
+| Gabarits sans valeurs (`.env.example`) | Aucun outil requis |
 | Hook `pre-commit` qui scanne les secrets | [gitleaks](https://github.com/gitleaks/gitleaks), [trufflehog](https://github.com/trufflesecurity/trufflehog), [detect-secrets](https://github.com/Yelp/detect-secrets) |
 | Stockage dans un coffre | [Vault](https://www.vaultproject.io/), AWS Secrets Manager, 1Password, Doppler |
 | Secret scanning côté plateforme | [GitHub secret scanning](https://docs.github.com/fr/code-security/secret-scanning) (gratuit pour les dépôts publics, partenaires intégrés pour AWS, Stripe, GitHub Tokens, etc.). |
@@ -1723,15 +1817,17 @@ bfg --replace-text passwords.txt
 
 - Sur GitHub, demander la purge du cache des forks (sinon le secret reste accessible via les forks).
 - Faire tourner aussi tout secret dérivé (sessions, certificats émis avec la clé compromise).
-- Ouvrir un post-mortem : pourquoi le hook `pre-commit` n'a-t-il pas attrapé la fuite ?
+- Ouvrir un *post-mortem* (« analyse après coup », sans chercher de coupable) : pourquoi le contrôle automatique n'a-t-il pas attrapé la fuite, et comment l'éviter la prochaine fois ?
 
 [Retour en haut de page](#table-des-matières)
 
 ## Le fichier .gitignore
 
-> **Définition — `.gitignore`.** Fichier listant les motifs de chemins à ne pas suivre dans Git. Lu à chaque opération qui pourrait ajouter un fichier à l'index.
+> **Que veut dire « `.gitignore` » et « suivre un fichier » ?** *Suivre* (en anglais *track*) un fichier, c'est demander à Git d'en surveiller les changements. Le fichier `.gitignore` (« Git, ignore ») contient une liste de motifs de fichiers à ne PAS suivre, pour que Git les laisse tranquilles. C'est la liste « ne pas ranger » posée sur un bureau : certains papiers de travail temporaires ne doivent jamais finir aux archives. *Un motif* est une formule courte qui désigne plusieurs fichiers à la fois, par exemple `*.log` pour « tous les fichiers qui finissent par `.log` ».
 
-`.gitignore` indique à Git les fichiers et motifs à ne pas suivre : artefacts de build, dépendances installées, configuration locale d'IDE, fichiers binaires volumineux.
+`.gitignore` sert à écarter ce qui n'a pas à être versionné : *artefacts* de build (fichiers fabriqués automatiquement à partir du code), dépendances installées, réglages locaux de l'IDE, gros binaires.
+
+> **Que veut dire « IDE » ?** IDE veut dire *Integrated Development Environment*, « environnement de développement intégré ». C'est le logiciel dans lequel on écrit le code (VS Code, IntelliJ), qui réunit éditeur de texte, coloration, autocomplétion et lancement des tests au même endroit, comme un atelier où tous les outils sont à portée de main.
 
 ### Exemple PHP / Node minimal
 
@@ -1788,7 +1884,7 @@ git config --global core.excludesFile ~/.gitignore_global
 
 ## Le fichier .gitattributes et la normalisation CRLF
 
-> **Définition — `.gitattributes`.** Fichier qui attache des attributs aux chemins du dépôt : fins de ligne, traitement diff, fichiers binaires, prise en charge de Git LFS, export-ignore.
+> **Que veut dire « `.gitattributes` » ?** Le fichier `.gitattributes` attache des règles de traitement à certains fichiers : comment gérer leurs fins de ligne, comment les comparer, lesquels considérer comme binaires, lesquels confier à Git LFS. Là où `.gitignore` dit « ignore ces fichiers », `.gitattributes` dit « traite ces fichiers de telle manière ». C'est l'étiquette de lavage cousue sur un vêtement : elle ne le cache pas, elle indique comment s'en occuper.
 
 Là où `.gitignore` cache des fichiers, `.gitattributes` change la façon dont Git les traite.
 
@@ -1833,6 +1929,8 @@ Sans `.gitattributes`, deux développeurs sur deux OS différents finissent par 
 
 ### Le problème CRLF en détail
 
+> **Que veut dire « CRLF » et « LF » ?** À la fin de chaque ligne d'un fichier texte se cache un caractère invisible qui dit « passe à la ligne ». Windows en met deux, *CR* (*Carriage Return*, « retour chariot ») suivi de *LF* (*Line Feed*, « saut de ligne »), noté `\r\n`. macOS et Linux n'en mettent qu'un, *LF* seul, noté `\n`. Comme la machine à écrire d'autrefois qui faisait deux gestes (ramener le chariot, puis dérouler le papier) là où un traitement de texte moderne n'en fait qu'un. Quand deux systèmes mélangent ces conventions, Git voit des modifications partout alors que le texte visible n'a pas changé.
+
 Historique : Windows utilise `CRLF` (`\r\n`) en fin de ligne, héritage des télétypes IBM. macOS / Linux utilisent `LF` (`\n`). Ouvrir un fichier `LF` dans le Bloc-notes Windows historique affiche tout sur une ligne ; ouvrir un fichier `CRLF` dans certains outils Linux fait apparaître `^M` à la fin de chaque ligne.
 
 Sans normalisation, voici ce qui se passe :
@@ -1854,7 +1952,7 @@ Sans normalisation, voici ce qui se passe :
 ### Recette qui marche
 
 ```gitattributes
-# .gitattributes — politique standard
+# .gitattributes : politique standard
 * text=auto eol=lf
 
 # Forcer LF même sur Windows (scripts shell qui ne tolèrent pas CRLF)
@@ -1875,7 +1973,7 @@ Sans normalisation, voici ce qui se passe :
 ```
 
 ```ini
-# .editorconfig — recommandation IDE
+# .editorconfig : recommandation IDE
 root = true
 
 [*]
@@ -1908,9 +2006,9 @@ git commit -m "chore: renormalisation des fins de ligne sur tout le dépôt"
 
 ## Hooks Git
 
-> **Définition — Hook.** Script déclenché automatiquement par un événement Git (avant commit, avant push, après merge…). Stocké dans `.git/hooks/`, il peut bloquer ou compléter l'opération en cours.
+> **Que veut dire « hook » ?** Un *hook* (« crochet, point d'accroche ») est un petit script que Git lance automatiquement à un moment précis : juste avant un commit, juste avant un push, après une fusion. Il peut compléter l'action (par exemple reformater le code) ou la bloquer (refuser un commit non conforme). C'est un déclencheur automatique, comme le détecteur de fumée qui se met en marche tout seul quand l'événement attendu survient. *Un script* est une suite d'instructions exécutées par l'ordinateur sans intervention.
 
-Les hooks sont **locaux** : ils ne sont pas propagés par `git clone`. Pour les partager dans une équipe, on utilise un gestionnaire dédié.
+Les hooks sont **locaux** : `git clone` ne les copie pas. Pour les partager dans une équipe, on passe par un gestionnaire dédié.
 
 ### Hooks usuels
 
@@ -1929,11 +2027,13 @@ Les hooks sont **locaux** : ils ne sont pas propagés par `git clone`. Pour les 
 - [Husky](https://typicode.github.io/husky/) (JavaScript / Node)
 - [Lefthook](https://github.com/evilmartians/lefthook) (binaire unique, multi-langage, configuration YAML)
 
-### Exemple `pre-commit` — lint et scan de secrets
+### Exemple `pre-commit` : lint et scan de secrets
+
+> **Que veut dire « lint » ?** Un *linter* est un outil qui analyse le code sans l'exécuter pour repérer les erreurs de style, les fautes courantes et les constructions douteuses. *Linter* le code, c'est le passer au peigne fin automatiquement, comme un correcteur orthographique pour la programmation. Le nom vient de l'anglais *lint*, les peluches qu'on retire d'un vêtement.
 
 ```bash
 #!/usr/bin/env bash
-# .git/hooks/pre-commit — rendre exécutable : chmod +x .git/hooks/pre-commit
+# .git/hooks/pre-commit : rendre exécutable : chmod +x .git/hooks/pre-commit
 set -euo pipefail
 
 echo "==> Lint"
@@ -1950,7 +2050,7 @@ else
 fi
 ```
 
-### Exemple `commit-msg` — vérifier Conventional Commits
+### Exemple `commit-msg` : vérifier Conventional Commits
 
 ```bash
 #!/usr/bin/env bash
@@ -1969,7 +2069,7 @@ if ! grep -qE "$PATTERN" "$COMMIT_MSG_FILE"; then
 fi
 ```
 
-### Exemple `pre-push` — bloquer un push direct sur main
+### Exemple `pre-push` : bloquer un push direct sur main
 
 ```bash
 #!/usr/bin/env bash
@@ -1983,7 +2083,7 @@ if [ "$current_branch" = "$protected_branch" ]; then
 fi
 ```
 
-### Exemple `pre-commit` (gestionnaire `pre-commit`) — `.pre-commit-config.yaml`
+### Exemple `pre-commit` (gestionnaire `pre-commit`) : `.pre-commit-config.yaml`
 
 ```yaml
 repos:
@@ -2064,7 +2164,9 @@ GitHub.com ne permet pas de hooks `pre-receive` personnalisés (sauf sur GitHub 
 
 ## Pull Requests : la revue comme garde-fou
 
-Une Pull Request (PR) — ou Merge Request sur GitLab — n'est pas qu'un bouton « fusionner ». C'est l'unité de revue, la dernière barrière avant `main`.
+Une Pull Request (PR), appelée Merge Request sur GitLab, n'est pas qu'un bouton « fusionner ». C'est l'unité de revue, la dernière barrière avant `main`.
+
+> **Que veut dire « revue de code » ?** La *revue de code* (en anglais *code review*) est la relecture du code par un ou plusieurs collègues avant qu'il rejoigne la branche principale. Ils vérifient la justesse, la clarté, la sécurité et proposent des améliorations. C'est la relecture d'un article par un comité avant publication : un deuxième regard attrape ce que l'auteur ne voit plus.
 
 ### Description d'une PR utile
 
@@ -2086,7 +2188,7 @@ Lister les changements clés en une dizaine de lignes maximum.
 
 ### Bonnes pratiques côté auteur
 
-- Ouvrir la PR tôt, en *draft*, pour aligner sur la direction avant d'avoir tout codé.
+- Ouvrir la PR tôt, en *draft* (« brouillon » : une PR marquée comme non finie, qu'on ne peut pas encore fusionner), pour valider la direction avant d'avoir tout codé.
 - Garder la diff sous ~400 lignes : au-delà, la qualité de revue chute drastiquement.
 - Répondre aux commentaires plutôt que les fermer silencieusement.
 - Rebaser sur `main` avant le merge final pour une diff propre.
@@ -2095,7 +2197,7 @@ Lister les changements clés en une dizaine de lignes maximum.
 
 - Distinguer **bloquants** (« ne fusionne pas tant que… ») et **suggestions** (« nit: ... »).
 - Approuver explicitement quand c'est bon ; ne pas laisser une PR en suspens parce qu'on l'a oubliée.
-- Critiquer le code, pas la personne. Préférer « cette boucle est en O(n²) » à « tu as écrit une boucle en O(n²) ».
+- Critiquer le code, pas la personne. Préférer « cette boucle est en O(n²) » à « vous avez écrit une boucle en O(n²) ». (La notation *O(n²)*, « grand O de n au carré », décrit la vitesse d'un algorithme : si le nombre d'éléments `n` double, le temps de calcul est multiplié par quatre, ce qui devient vite lent.)
 
 ### Protection de branche recommandée sur `main`
 
@@ -2256,7 +2358,7 @@ Migration : les anciennes branch protection rules continuent de fonctionner en p
 
 ### « Je suis en *detached HEAD* »
 
-> **Définition — Detached HEAD.** État où `HEAD` pointe directement sur un commit au lieu de pointer sur une branche. Tout commit créé dans cet état n'est rattaché à aucune branche et risque d'être perdu.
+> **Que veut dire « detached HEAD » ?** *Detached HEAD* veut dire « tête détachée ». Normalement `HEAD` (le repère qui indique où vous travaillez) pointe sur une branche. En *detached HEAD*, il pointe directement sur un commit précis, sans branche. Tout nouveau commit créé dans cet état ne s'accroche à aucune étiquette et risque d'être ramassé puis supprimé : c'est comme écrire sur une feuille volante hors de tout classeur, facile à égarer. La solution est de créer aussitôt une branche pour rattacher ce travail.
 
 ```bash
 # Vous avez fait git checkout <SHA> et travaillé un peu. Pour sauver :
